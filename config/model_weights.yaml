@@ -36,16 +36,29 @@ dixon_coles:
   ridge: 0.6               # 攻防参数的 L2 正则，样本少时防止过拟合
   max_goals: 10
 
+form_adjust:
+  # 用近期状态差、战意差对集成概率做小幅修正（对数几率平移：主胜 ×e^s，客胜 ×e^-s）。
+  #   s = form_coef × 状态差（主 − 客，约 −1~1） + motivation_coef × 战意差（主 − 客）
+  # scripts/backtest.py 会在历史数据上校准这两个系数并写入 learned；
+  # 想固定使用下面的初始值，把 use_learned 设为 false。
+  enabled: true
+  form_coef: 0.15
+  motivation_coef: 0.15
+  max_shift: 0.04          # 任一项概率的最大变动（绝对值）
+  use_learned: true
+  learned: null            # {form_coef, motivation_coef, samples, fitted_at, ...}
+
 risk:
   # 各风险因子权重（因子取值 0~1；数据缺失的因子标记 unknown，不当作 0）
   weights:
-    closeness: 0.30        # 概率接近
-    disagreement: 0.20     # 模型分歧
-    data_gap: 0.15         # 数据不足
-    odds_move: 0.10        # 赔率波动
-    lineup: 0.10           # 伤停 / 首发不确定
+    closeness: 0.28        # 概率接近
+    disagreement: 0.18     # 模型分歧
+    data_gap: 0.14         # 数据不足
+    odds_move: 0.09        # 赔率波动
+    lineup: 0.09           # 伤停 / 首发不确定
     fatigue: 0.07          # 赛程压力
     context: 0.08          # 赛事性质（杯赛、保级、争冠）
+    form_motivation: 0.10  # 状态/战意是否支持推荐方向
   unknown_factor_value: 0.5   # unknown 因子按该值计入，并在报告中提示
   thresholds:
     low: 0.33

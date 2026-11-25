@@ -32,7 +32,7 @@ def body():
     if args.full or s.get("status") != "ok":
         return s
     return {k: s[k] for k in ("status", "leagues", "samples", "fit_samples", "holdout_samples", "test_range",
-                              "holdout_range", "learned", "elo_draw_nu", "selector_learned", "holdout", "ece",
+                              "holdout_range", "learned", "elo_draw_nu", "selector_learned", "form_adjust_learned", "holdout", "ece",
                               "top_pick_buckets", "ren9_simulation", "applied", "leakage_controls")}
 
 

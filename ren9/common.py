@@ -66,6 +66,8 @@ def model_weights() -> dict:
             mw.setdefault("elo", {})["draw_nu"] = learned["elo_draw_nu"]
         if learned.get("selector"):
             mw.setdefault("selector", {})["learned"] = learned["selector"]
+        if learned.get("form_adjust"):
+            mw.setdefault("form_adjust", {})["learned"] = learned["form_adjust"]
     return mw
 
 

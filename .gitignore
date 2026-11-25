@@ -8,3 +8,4 @@ data/predictions/*
 data/results/*
 !data/*/.gitkeep
 dist/
+*.backup

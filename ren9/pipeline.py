@@ -8,10 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ren9 import odds as odds_mod
-from ren9 import optimizer, predict, report, risk, schedule, selector, store, teamdata
+from ren9 import form, optimizer, predict, report, risk, schedule, selector, store, teamdata
 from ren9.common import data_dir, now, now_iso, parse_dt, resolve_date, settings, write_json
 
-ORDER = ("schedule", "team_data", "odds", "probabilities", "risk", "selection", "plans", "report")
+ORDER = ("schedule", "team_data", "odds", "form_analysis", "probabilities", "risk", "selection", "plans", "report")
 STRATEGIES = ("conservative", "balanced", "aggressive")
 
 
@@ -74,6 +74,8 @@ def run(ctx: Ctx, upto: str = "report") -> dict:
         saved = store.load_stage(gt, period, name)
         if name == "probabilities" and saved and saved.get("config_fingerprint") != predict.config_fingerprint():
             dirty = True                       # 模型参数 / 权重已变化（如刚跑完回测），概率需要重算
+        if name == "form_analysis" and saved and saved.get("version") != form.VERSION:
+            dirty = True                       # 状态/战意分析逻辑已更新，旧结果作废
         if saved is not None and not dirty and idx != target and not (ctx.seqs and partial):
             ctx.stages[name] = saved
             return saved
@@ -85,9 +87,11 @@ def run(ctx: Ctx, upto: str = "report") -> dict:
 
     stage("team_data", lambda prev: teamdata.collect(sch, ctx.refresh, ctx.seqs, prev), partial=True)
     stage("odds", lambda prev: odds_mod.collect(sch, ctx.stages["team_data"], ctx.refresh, ctx.seqs, prev), partial=True)
+    stage("form_analysis", lambda prev: form.assess(ctx.stages["team_data"]))
     stage("probabilities", lambda prev: predict.predict(sch, ctx.stages["team_data"], ctx.stages["odds"],
-                                                        ctx.seqs, prev), partial=True)
-    stage("risk", lambda prev: risk.assess(ctx.stages["probabilities"], ctx.stages["team_data"], ctx.stages["odds"]))
+                                                        ctx.seqs, prev, ctx.stages["form_analysis"]), partial=True)
+    stage("risk", lambda prev: risk.assess(ctx.stages["probabilities"], ctx.stages["team_data"],
+                                           ctx.stages["odds"], ctx.stages["form_analysis"]))
 
     if gt == "ren9":
         def do_select(prev):

@@ -15,6 +15,7 @@ FACTOR_ZH = {
     "lineup": "伤停/首发不确定",
     "fatigue": "赛程压力",
     "context": "赛事性质",
+    "form_motivation": "状态/战意与推荐方向",
 }
 
 
@@ -30,7 +31,7 @@ def closeness(p: dict) -> float:
     return round(0.6 * a + 0.4 * b, 4)
 
 
-def assess_match(pred: dict, td: dict | None, od: dict | None) -> dict:
+def assess_match(pred: dict, td: dict | None, od: dict | None, form_data: dict | None = None) -> dict:
     mw = model_weights().get("risk", {})
     weights = mw.get("weights", {})
     unknown_val = mw.get("unknown_factor_value", 0.5)
@@ -105,6 +106,19 @@ def assess_match(pred: dict, td: dict | None, od: dict | None) -> dict:
     else:
         put("context", None, "赛事性质未知")
 
+    # 状态 / 战意因子：近期状态和战意是否支持首选结果（支持则降风险，相悖则升风险）
+    fd = (form_data or {}).get("form_diff")
+    mg = (form_data or {}).get("motivation_gap")
+    if fd is None and mg is None:
+        put("form_motivation", None, "缺少近期状态和战意数据" if form_data else "未执行状态分析")
+    else:
+        lean = (fd or 0.0) + (mg or 0.0)                 # >0 利好主队
+        top = max(OUTCOMES, key=lambda k: p[k])
+        support = lean if top == "win" else -lean if top == "loss" else -abs(lean)
+        bits = ([f"状态差 {fd:+.2f}"] if fd is not None else ["状态未知"]) +                ([f"战意差 {mg:+.2f}"] if mg is not None else ["战意未知"])
+        verdict = "支持首选" if support >= 0.1 else "与首选相悖" if support <= -0.1 else "对首选影响不大"
+        put("form_motivation", 0.5 - 0.8 * support, f"{'，'.join(bits)}（主 − 客），{verdict}")
+
     total_w = sum(weights.get(k, 0) for k in factors) or 1.0
     score = sum(weights.get(k, 0) * (f["value"] if f["known"] else unknown_val) for k, f in factors.items()) / total_w
     unknown = [FACTOR_ZH[k] for k, f in factors.items() if not f["known"]]
@@ -134,10 +148,12 @@ def assess_match(pred: dict, td: dict | None, od: dict | None) -> dict:
             "reasons": reasons, "unknown_factors": unknown}
 
 
-def assess(predictions: dict, team_data: dict | None, odds: dict | None) -> dict:
+def assess(predictions: dict, team_data: dict | None, odds: dict | None, form_analysis: dict | None = None) -> dict:
     td = {x["match_id"]: x for x in (team_data or {}).get("matches", [])}
     od = {x["match_id"]: x for x in (odds or {}).get("matches", [])}
-    out = [assess_match(p, td.get(p["match_id"]), od.get(p["match_id"])) for p in predictions.get("matches", [])]
+    fd = {x["match_id"]: x for x in (form_analysis or {}).get("matches", [])} if form_analysis else {}
+    out = [assess_match(p, td.get(p["match_id"]), od.get(p["match_id"]), fd.get(p["match_id"]))
+           for p in predictions.get("matches", [])]
     counts = {lv: sum(1 for x in out if x["risk_level"] == lv) for lv in ("LOW", "MEDIUM", "HIGH", "UNKNOWN")}
     return {"date": predictions.get("date"), "game_type": predictions.get("game_type"),
             "period": predictions.get("period"), "generated_at": now_iso(), "matches": out, "counts": counts}

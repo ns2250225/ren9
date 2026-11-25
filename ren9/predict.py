@@ -11,7 +11,7 @@ from models import elo as elo_model
 from models import ensemble
 from models.dixon_coles import DixonColesModel
 from models.poisson import PoissonModel, calibrate_matrix, handicap_probs
-from ren9 import history
+from ren9 import form, history
 from ren9.common import OUTCOMES, data_sources, model_weights, now_iso, rnd, settings
 
 _fit_memo: dict[tuple, dict] = {}
@@ -75,7 +75,8 @@ def _quality(sched_official: bool, td: dict | None, od: dict | None, elo_src: st
     return round(score, 4), {k: round(v, 3) for k, v in parts.items()}
 
 
-def predict_match(m: dict, td: dict | None, od: dict | None, sched_official: bool) -> dict:
+def predict_match(m: dict, td: dict | None, od: dict | None, sched_official: bool,
+                  form_match: dict | None = None) -> dict:
     cfg = settings()
     enabled = [k for k, v in cfg.get("models", {}).items() if v]
     min_hist = cfg["data"].get("min_history_matches", 4)
@@ -183,7 +184,11 @@ def predict_match(m: dict, td: dict | None, od: dict | None, sched_official: boo
                    agreement=None, weights_used={},
                    reason="所有模型都缺少输入数据，无法计算概率（不会用猜测值代替）")
         return out
-    final = round_probs(combined["probabilities"])
+    # 近期状态 / 战意修正：在集成概率上做有上限的小幅平移（见 form.adjust_probabilities）
+    adjusted, adj_info = form.adjust_probabilities(combined["probabilities"], form_match)
+    out["form_adjustment"] = adj_info
+    out["probabilities_before_form"] = round_probs(combined["probabilities"])
+    final = round_probs(adjusted)
     top = max(OUTCOMES, key=lambda k: final[k])
     out.update(
         status="ok",
@@ -212,8 +217,10 @@ def predict_match(m: dict, td: dict | None, od: dict | None, sched_official: boo
 
 
 def predict(schedule: dict, team_data: dict | None, odds: dict | None,
-            only_seqs: list[int] | None = None, previous: dict | None = None) -> dict:
+            only_seqs: list[int] | None = None, previous: dict | None = None,
+            form_analysis: dict | None = None) -> dict:
     td = {x["match_id"]: x for x in (team_data or {}).get("matches", [])}
+    fm = {x["match_id"]: x for x in (form_analysis or {}).get("matches", [])}
     od = {x["match_id"]: x for x in (odds or {}).get("matches", [])}
     prev = {x["match_id"]: x for x in (previous or {}).get("matches", [])}
     official = bool(schedule.get("official", True))
@@ -223,7 +230,7 @@ def predict(schedule: dict, team_data: dict | None, odds: dict | None,
         if only_seqs and m.get("seq") not in only_seqs and mid in prev:
             out.append(prev[mid])
         else:
-            out.append(predict_match(m, td.get(mid), od.get(mid), official))
+            out.append(predict_match(m, td.get(mid), od.get(mid), official, fm.get(mid)))
     return {
         "date": schedule.get("date"), "game_type": schedule.get("game_type"), "period": schedule.get("period"),
         "generated_at": now_iso(), "matches": out,

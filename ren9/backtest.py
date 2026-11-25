@@ -15,7 +15,7 @@ from models import elo as elo_model
 from models import ensemble, metrics
 from models.dixon_coles import DixonColesModel
 from models.poisson import PoissonModel
-from ren9 import optimizer
+from ren9 import form, optimizer
 from ren9.common import data_dir, load_yaml, model_weights, now_iso, save_learned, write_json
 from ren9.odds import analyze
 from ren9.risk import closeness
@@ -85,6 +85,76 @@ def walk_forward(rows: list[dict], test_from: str, step_days: int = 7, window_da
     return out
 
 
+def form_features(rows: list[dict]) -> dict[tuple, dict]:
+    """为单个联赛的每场历史比赛计算赛前的状态差 / 战意差（主 − 客）。
+
+    只使用该比赛日之前的比赛（同一天的比赛互不可见）；状态用 form.form_score、战意用
+    form.league_motivation，与实时分析同一套公式。返回 {(date, home, away): {form_diff, motivation_gap}}。
+    """
+    season_of = lambda d: _season_start(date.fromisoformat(d))          # noqa: E731
+    season_teams: dict[int, set] = {}
+    for r in rows:
+        season_teams.setdefault(season_of(r["date"]), set()).update((r["home"], r["away"]))
+    recent: dict[str, list] = {}                 # 球队 -> [(赛果, 进球, 失球)]，新→旧，跨赛季延续
+    tables: dict[int, dict[str, list]] = {}      # 赛季 -> 球队 -> [积分, 净胜球, 已赛]
+    out: dict[tuple, dict] = {}
+    i = 0
+    while i < len(rows):
+        j = i
+        while j < len(rows) and rows[j]["date"] == rows[i]["date"]:
+            j += 1
+        season = season_of(rows[i]["date"])
+        tab = tables.setdefault(season, {})
+        ranked = sorted(tab, key=lambda t: (-tab[t][0], -tab[t][1]))
+        total = len(season_teams[season])
+
+        def side(team):
+            games = recent.get(team, [])[:5]
+            q = form.form_score([g[0] for g in games], [(g[1], g[2]) for g in games])["overall_form"]
+            mot = form.league_motivation(ranked.index(team) + 1, total, tab[team][2])[0] if team in tab else None
+            return q, mot
+
+        for r in rows[i:j]:
+            (hq, hm), (aq, am) = side(r["home"]), side(r["away"])
+            out[(r["date"], r["home"], r["away"])] = {
+                "form_diff": hq - aq if hq is not None and aq is not None else None,
+                "motivation_gap": hm - am if hm is not None and am is not None else None}
+        for r in rows[i:j]:
+            for team, gf, ga in ((r["home"], r["hg"], r["ag"]), (r["away"], r["ag"], r["hg"])):
+                res = "W" if gf > ga else "D" if gf == ga else "L"
+                recent.setdefault(team, []).insert(0, (res, gf, ga))
+                row = tab.setdefault(team, [0, 0, 0])
+                row[0] += 3 if res == "W" else 1 if res == "D" else 0
+                row[1] += gf - ga
+                row[2] += 1
+        i = j
+    return out
+
+
+def fit_form_adjust(samples: list[tuple[dict, float | None, float | None, str]]) -> dict | None:
+    """在拟合集上最小化 Log Loss，求状态差 / 战意差的修正系数（约束为非负）。
+
+    samples: [(集成概率, 状态差, 战意差, 实际结果)]；缺失的差值按 0 处理。
+    """
+    if len(samples) < 200:
+        return None
+    P = np.array([[p[k] for k in ensemble.ORDER] for p, *_ in samples])
+    F = np.array([s[1] or 0.0 for s in samples])
+    M = np.array([s[2] or 0.0 for s in samples])
+    Y = np.array([ensemble.ORDER.index(s[3]) for s in samples])
+
+    def loss(x):
+        sig = x[0] * F + x[1] * M
+        adj = P * np.stack([np.exp(sig), np.ones_like(sig), np.exp(-sig)], axis=1)
+        adj = adj / adj.sum(axis=1, keepdims=True)
+        return float(-np.mean(np.log(np.clip(adj[np.arange(len(Y)), Y], 1e-12, 1))))
+
+    res = minimize(loss, np.array([0.1, 0.1]), method="L-BFGS-B", bounds=[(0.0, 1.0), (0.0, 1.0)])
+    return {"form_coef": round(float(res.x[0]), 4), "motivation_coef": round(float(res.x[1]), 4),
+            "fit_log_loss_before": round(loss(np.zeros(2)), 5), "fit_log_loss_after": round(float(res.fun), 5),
+            "samples": len(samples)}
+
+
 def fit_selector_weights(samples: list[tuple[float, float, float, int]]) -> dict | None:
     """逻辑回归：首选是否命中 ~ 概率优势 + 模型一致性 − 风险（系数约束为非负）。"""
     if len(samples) < 200:
@@ -148,8 +218,10 @@ def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int 
         # 最早的一个赛季只做预热，之后的比赛才作为被预测对象
         test_from = date(_season_start(ref) - (seasons - 2), 7, 1).isoformat()
         recs = walk_forward(rows, test_from, step_days)
+        feats = form_features(rows)
         for r in recs:
             r["league"] = code
+            r.update(feats.get((r["date"], r["home"], r["away"]), {}))
         records.extend(recs)
         used.append(code)
     records = [r for r in records if all(m in r["probs"] for m in MODELS)]
@@ -182,6 +254,24 @@ def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int 
         pairs = [(ens(r, initial, 1.0), r["outcome"]) for r in hold]
         holdout["ensemble"] = holdout["ensemble_initial"]
 
+    # 状态 / 战意修正系数：在拟合集上学习，在留出集上对比修正前后的 Log Loss
+    def base(r):
+        return ens(r, fit["weights"], fit["temperature"]) if fit else ens(r, initial, 1.0)
+
+    form_fit = fit_form_adjust([(base(r), r.get("form_diff"), r.get("motivation_gap"), r["outcome"]) for r in fit_part])
+    if form_fit:
+        cfg = {"enabled": True, "form_coef": form_fit["form_coef"], "motivation_coef": form_fit["motivation_coef"],
+               "max_shift": (mw.get("form_adjust") or {}).get("max_shift", 0.04), "source": "backtest"}
+        adjusted = [(form.adjust_probabilities(base(r), r, cfg)[0], r["outcome"]) for r in hold]
+        before = metrics.summarize([(base(r), r["outcome"]) for r in hold])
+        after = metrics.summarize(adjusted)
+        form_fit.update(holdout_before=before, holdout_after=after,
+                        improves_holdout=after["log_loss"] < before["log_loss"])
+        if not form_fit["improves_holdout"]:
+            # 留出集上没有改善：不让未经验证的修正影响概率
+            form_fit.update(form_coef=0.0, motivation_coef=0.0,
+                            note="留出集 Log Loss 未改善，系数置 0（状态/战意只进入风险因子，不修正概率）")
+
     sel_samples = []
     for r in fit_part:
         p = ens(r, fit["weights"], fit["temperature"]) if fit else ens(r, initial, 1.0)
@@ -196,7 +286,7 @@ def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int 
         "test_range": [records[0]["date"], records[-1]["date"]],
         "holdout_range": [hold[0]["date"], hold[-1]["date"]],
         "split": "按时间排序，前 60% 拟合集成权重与校准温度，后 40% 留出评估",
-        "learned": fit, "elo_draw_nu": nu, "selector_learned": sel_fit,
+        "learned": fit, "elo_draw_nu": nu, "selector_learned": sel_fit, "form_adjust_learned": form_fit,
         "holdout": holdout,
         "calibration": metrics.calibration_bins(pairs),
         "ece": metrics.expected_calibration_error(pairs),
@@ -218,5 +308,7 @@ def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int 
         if sel_fit:
             learned["selector"] = sel_fit
         save_learned(learned)
+    if apply and form_fit:
+        save_learned({"form_adjust": {**form_fit, "fitted_at": now_iso(), "source": "backtest:" + ",".join(used)}})
     write_json(data_dir() / "history" / "backtest_summary.json", summary)
     return summary

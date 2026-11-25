@@ -98,10 +98,10 @@ competitions:
   韩职: {espn: kor.1, type: league}
   沙特联: {espn: ksa.1, type: league}
   俄超: {espn: rus.1, fd_extra: RUS, type: league}
-  欧冠: {espn: uefa.champions, type: continental}
-  欧罗巴: {espn: uefa.europa, type: continental}
-  欧联: {espn: uefa.europa, type: continental}
-  欧协联: {espn: uefa.europa.conf, type: continental}
+  欧冠: {espn: uefa.champions, type: continental, league_phase: {rounds: 8, direct: 8, playoff: 24}}
+  欧罗巴: {espn: uefa.europa, type: continental, league_phase: {rounds: 8, direct: 8, playoff: 24}}
+  欧联: {espn: uefa.europa, type: continental, league_phase: {rounds: 8, direct: 8, playoff: 24}}
+  欧协联: {espn: uefa.europa.conf, type: continental, league_phase: {rounds: 6, direct: 8, playoff: 24}}
   亚冠精英: {espn: afc.champions, type: continental}
   亚冠: {espn: afc.champions, type: continental}
   解放者杯: {espn: conmebol.libertadores, type: continental}

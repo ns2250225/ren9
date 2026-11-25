@@ -216,24 +216,43 @@ def build_daily(st: dict, strategy: str) -> tuple[str, dict]:
     sel, plan = selections.get(strategy), plans.get(strategy)
     preds = {p["match_id"]: p for p in (st.get("probabilities") or {}).get("matches", [])}
     risks = {r["match_id"]: r for r in (st.get("risk") or {}).get("matches", [])}
+    forms = {f["match_id"]: f for f in (st.get("form_analysis") or {}).get("matches", [])}
     picks = {s["seq"]: s for s in (plan or {}).get("selections", [])}
 
     rows = []
     for m in sch.get("matches", []):
-        p, r = preds.get(m["match_id"], {}), risks.get(m["match_id"], {})
+        p, r, f = preds.get(m["match_id"], {}), risks.get(m["match_id"], {}), forms.get(m["match_id"], {})
         pr = p.get("probabilities")
         rec = (picks[m["seq"]]["picks_zh"] if m["seq"] in picks
                else OUTCOME_ZH[p["prediction"].lower()] if p.get("prediction") else "—")
+
+        # 状态优势简写
+        form_adv = "—"
+        if f.get("form_advantage"):
+            adv_map = {"home": "主", "away": "客", "balanced": "均"}
+            form_adv = adv_map.get(f["form_advantage"], "—")
+
+        # 战意对比简写
+        motivation_info = "—"
+        if f.get("home_form") and f.get("away_form"):
+            h_mot = f["home_form"].get("motivation", {})
+            a_mot = f["away_form"].get("motivation", {})
+            if h_mot.get("motivation_level") and a_mot.get("motivation_level"):
+                h_level = h_mot["motivation_level"]
+                a_level = a_mot["motivation_level"]
+                motivation_info = f"{h_level}/{a_level}"
+
         rows.append([
             m["seq"], m.get("competition") or "—", _hm(p.get("kickoff") or m.get("kickoff")), m["home_team"],
             m["away_team"], pct(pr["win"]) if pr else "—", pct(pr["draw"]) if pr else "—",
             pct(pr["loss"]) if pr else "—", rec, RISK_ZH.get(r.get("risk_level"), "—"),
             f"{p['model_confidence']:.2f}" if p.get("model_confidence") is not None else "—",
             f"{p['data_quality']:.2f}" if p.get("data_quality") is not None else "—",
+            form_adv, motivation_info,
             ("✅ 入选" if m["seq"] in picks else "排除") if plan and plan.get("status") == "ok" else "—",
         ])
     match_table = table(["场次", "赛事", "开球(北京)", "主队", "客队", "胜", "平", "负", "推荐", "风险", "置信度",
-                         "数据质量", "任九"], rows, "rllllrrrccrrc")
+                         "数据质量", "状态优势", "战意(主/客)", "任九"], rows, "rllllrrrccrrccc")
 
     if plan and plan.get("status") == "ok":
         selected_table = table(
@@ -377,6 +396,7 @@ def build_match(st: dict, seq: int) -> str:
     r = next((x for x in st["risk"]["matches"] if x["match_id"] == mid), {})
     o = next((x for x in (st.get("odds") or {}).get("matches", []) if x["match_id"] == mid), {})
     t = next((x for x in (st.get("team_data") or {}).get("matches", []) if x["match_id"] == mid), None)
+    f = next((x for x in (st.get("form_analysis") or {}).get("matches", []) if x["match_id"] == mid), None)
     pr = p.get("probabilities")
     prob_table = table(["胜", "平", "负"], [[pct(pr[k], 1) for k in OUTCOMES]], "ccc") if pr else f"无法计算：{p.get('reason')}"
     used = p.get("weights_used", {})
@@ -414,6 +434,18 @@ def build_match(st: dict, seq: int) -> str:
     mv = o.get("movement") or {}
     extra.append(f"- 赔率波动：{'去水概率最大变动 ' + pct(mv['max_change'], 1) if mv.get('known') else '暂无可比较的历史赔率'}")
     team_table, h2h = "（未能对应到公开数据源，球队数据缺失）", ""
+    # 球队状态和战意分析，以及它对概率的修正
+    form_lines = [f"- {x}" for x in (f or {}).get("notes", [])]
+    adj = p.get("form_adjustment") or {}
+    if adj.get("applied"):
+        d, before = adj["delta"], adj["before"]
+        form_lines.append(
+            f"- 概率修正：胜 {pct(before['win'], 1)} → {pct(pr['win'], 1)}，平 {pct(before['draw'], 1)} → "
+            f"{pct(pr['draw'], 1)}，负 {pct(before['loss'], 1)} → {pct(pr['loss'], 1)}"
+            f"（主胜 {d['win'] * 100:+.1f} 个百分点{'，已触及上限' if adj.get('capped') else ''}；系数来源：{adj['source']}）")
+    elif adj:
+        form_lines.append(f"- 概率未修正：{adj.get('reason')}（系数来源：{adj.get('source')}）")
+    form_analysis_text = "\n".join(form_lines) if form_lines else "状态和战意分析数据不足"
     if t and t["resolution"]["status"] == "resolved":
         def row(label, fn):
             return [label, fn(t["teams"]["home"]), fn(t["teams"]["away"])]
@@ -441,6 +473,7 @@ def build_match(st: dict, seq: int) -> str:
             row("官方首发", lambda x: "已公布 " + (x["lineup"].get("formation") or "") if x["lineup"]["official_lineup_published"] else "未公布"),
             row("伤停", lambda x: "未知（无可靠来源）"),
         ])
+
         if t.get("h2h") and t["h2h"]["meetings"]:
             hh = t["h2h"]
             h2h = (f"历史交锋（{hh['window']}，共 {hh['meetings']} 次）：{m['home_team']} {hh['home_team_wins']} 胜 "
@@ -464,7 +497,8 @@ def build_match(st: dict, seq: int) -> str:
         "data_quality": f"{p['data_quality']:.2f}" if p.get("data_quality") is not None else "—",
         "risk_level": f"{RISK_ZH.get(r.get('risk_level'), '—')}（评分 {r.get('risk_score')}）；" + "；".join(r.get("reasons", [])),
         "model_table": model_table, "model_details": "\n".join(det), "odds_table": odds_table,
-        "odds_extra": "\n".join(extra), "team_table": team_table, "h2h": h2h, "risk_table": risk_table,
+        "odds_extra": "\n".join(extra), "team_table": team_table, "h2h": h2h,
+        "form_analysis": form_analysis_text, "risk_table": risk_table,
         "missing": "\n".join(f"- {x}" for x in (t or {}).get("missing", ["未采集球队数据"])),
         "sources": "\n".join(dict.fromkeys(srcs)),
     }
