@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+data/cache/*
+data/history/*
+data/predictions/*
+data/results/*
+!data/*/.gitkeep
+dist/

@@ -1,0 +1,22 @@
+ensemble:
+  weights:
+    elo: 0.3
+    poisson: 0.05
+    dixon_coles: 0.05
+    market: 0.6
+  temperature: 0.8391
+  log_loss: 0.994
+  samples: 1750
+  constraints:
+    max_market_weight: 0.6
+    min_model_weight: 0.05
+  fitted_at: '2026-11-24T15:33:33+08:00'
+  source: backtest:E0,E1,D1,I1,SP1,F1
+elo_draw_nu: 0.74
+selector:
+  weights:
+    probability: 0.6529
+    agreement: 0.0
+    data_quality: 0.15
+    risk: 0.1971
+  samples: 1750

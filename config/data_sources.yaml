@@ -1,0 +1,126 @@
+# 数据源配置。status 字段为最近一次实测结论（scripts/check_sources.py 会重新实测并
+# 把结果写入 data/cache/source_status.json；运行时以实测结果为准）。
+sources:
+  sporttery_zc:
+    name: 中国体彩网 传统足彩（胜负彩/任选9场）
+    kind: official
+    base: https://webapi.sporttery.cn/gateway/lottery
+    endpoints:
+      schedule: /getFootBallMatchV1.qry?param=90,0&sellStatus=0&termLimits=10
+      schedule_by_period: /getFootBallMatchV1.qry?param=90,0&lotteryDrawNum={period}&sellStatus=0&termLimits=10
+      draw_by_period: /getFootBallDrawInfoByDrawNumV1.qry?isVerify=1&lotteryGameNum=90&lotteryDrawNum={period}
+      latest_draw: /getFootBallDrawInfoV1.qry?isVerify=1&param=90,0
+      history: /getHistoryPageListV1.qry?gameNo=90&provinceId=0&pageSize={page_size}&isVerify=1&pageNo={page}
+    status: verified         # 2026-11-24 实测可用
+    api_key: false
+  sporttery_jc:
+    name: 中国体育彩票 竞彩足球（胜平负/让球胜平负）
+    kind: official
+    base: https://webapi.sporttery.cn/gateway/jc/football
+    endpoints:
+      matches: /getMatchCalculatorV1.qry?poolCode=had,hhad&channel=c
+    status: verified         # 2026-11-24 实测可用（赛果接口 getMatchResultV1 返回 403，不使用）
+    api_key: false
+  espn:
+    name: ESPN 公开接口
+    kind: public
+    base: https://site.api.espn.com/apis
+    endpoints:
+      scoreboard: /site/v2/sports/soccer/{league}/scoreboard?dates={dates}
+      standings: /v2/sports/soccer/{league}/standings
+      summary: /site/v2/sports/soccer/{league}/summary?event={event}
+      team_schedule: /site/v2/sports/soccer/{league}/teams/{team}/schedule
+    status: verified         # 2026-11-24 实测可用（dates 支持 YYYYMMDD 与 YYYYMM，不支持区间）
+    api_key: false
+  football_data:
+    name: football-data.co.uk
+    kind: public
+    base: https://www.football-data.co.uk
+    endpoints:
+      main: /mmz4281/{season}/{code}.csv
+      extra: /new/{code}.csv
+    status: verified         # 2026-11-24 实测可用（主要联赛 CSV 含 HxG/AxG）
+    api_key: false
+  clubelo:
+    name: ClubElo
+    kind: public
+    base: http://api.clubelo.com
+    endpoints:
+      ratings: /{date}
+    status: unreachable      # 2026-11-24 实测连接失败；不可用时自动降级为自算 Elo
+    api_key: false
+  understat:
+    name: Understat
+    kind: public
+    base: https://understat.com
+    endpoints:
+      league: /getLeagueData/{league}/{season}
+    status: unreachable      # 2026-11-24 实测返回维护页；不可用时改用 football-data.co.uk 的 xG 列
+    api_key: false
+
+# 传统足彩/竞彩的赛事中文名 → 各数据源的联赛代码。
+# espn: ESPN 联赛 slug；fd: football-data.co.uk 主联赛代码；fd_extra: /new/ 下的代码；
+# understat: Understat 联赛名；type: league | cup | continental | international
+competitions:
+  英超: {espn: eng.1, fd: E0, understat: EPL, type: league}
+  英冠: {espn: eng.2, fd: E1, type: league}
+  英甲: {espn: eng.3, fd: E2, type: league}
+  英乙: {espn: eng.4, fd: E3, type: league}
+  德甲: {espn: ger.1, fd: D1, understat: Bundesliga, type: league}
+  德乙: {espn: ger.2, fd: D2, type: league}
+  意甲: {espn: ita.1, fd: I1, understat: Serie_A, type: league}
+  意乙: {espn: ita.2, fd: I2, type: league}
+  西甲: {espn: esp.1, fd: SP1, understat: La_liga, type: league}
+  西乙: {espn: esp.2, fd: SP2, type: league}
+  法甲: {espn: fra.1, fd: F1, understat: Ligue_1, type: league}
+  法乙: {espn: fra.2, fd: F2, type: league}
+  荷甲: {espn: ned.1, fd: N1, type: league}
+  葡超: {espn: por.1, fd: P1, type: league}
+  比甲: {espn: bel.1, fd: B1, type: league}
+  苏超: {espn: sco.1, fd: SC0, type: league}
+  土超: {espn: tur.1, fd: T1, type: league}
+  希超: {espn: gre.1, fd: G1, type: league}
+  日职: {espn: jpn.1, fd_extra: JPN, type: league}
+  日职联: {espn: jpn.1, fd_extra: JPN, type: league}
+  美职: {espn: usa.1, fd_extra: USA, type: league}
+  美职足: {espn: usa.1, fd_extra: USA, type: league}
+  巴甲: {espn: bra.1, fd_extra: BRA, type: league}
+  阿甲: {espn: arg.1, fd_extra: ARG, type: league}
+  瑞典超: {espn: swe.1, fd_extra: SWE, type: league}
+  挪超: {espn: nor.1, fd_extra: NOR, type: league}
+  丹超: {espn: den.1, fd_extra: DNK, type: league}
+  瑞士超: {espn: sui.1, fd_extra: SWZ, type: league}
+  奥甲: {espn: aut.1, fd_extra: AUT, type: league}
+  芬超: {espn: fin.1, fd_extra: FIN, type: league}
+  中超: {espn: chn.1, fd_extra: CHN, type: league}
+  墨超: {espn: mex.1, fd_extra: MEX, type: league}
+  澳超: {espn: aus.1, type: league}
+  韩职: {espn: kor.1, type: league}
+  沙特联: {espn: ksa.1, type: league}
+  俄超: {espn: rus.1, fd_extra: RUS, type: league}
+  欧冠: {espn: uefa.champions, type: continental}
+  欧罗巴: {espn: uefa.europa, type: continental}
+  欧联: {espn: uefa.europa, type: continental}
+  欧协联: {espn: uefa.europa.conf, type: continental}
+  亚冠精英: {espn: afc.champions, type: continental}
+  亚冠: {espn: afc.champions, type: continental}
+  解放者杯: {espn: conmebol.libertadores, type: continental}
+  英足总杯: {espn: eng.fa, type: cup}
+  英联杯: {espn: eng.league_cup, type: cup}
+  德国杯: {espn: ger.dfb_pokal, type: cup}
+  意大利杯: {espn: ita.coppa_italia, type: cup}
+  国王杯: {espn: esp.copa_del_rey, type: cup}
+  法国杯: {espn: fra.coupe_de_france, type: cup}
+  世界杯: {espn: fifa.world, type: international}
+  世预赛: {type: international}
+  欧洲杯: {espn: uefa.euro, type: international}
+  欧国联: {espn: uefa.nations, type: international}
+  友谊赛: {espn: fifa.friendly, type: international}
+
+# 赔率来源分类：official = 中国竞彩官方；commercial = 商业机构。两类分开保存，不混合为同一来源。
+odds_sources:
+  sporttery_jc_had: {kind: official, label: 竞彩官方胜平负}
+  sporttery_jc_hhad: {kind: official, label: 竞彩官方让球胜平负}
+  sporttery_zc_ref: {kind: official, label: 体彩网赛单页参考赔率}
+  espn_draftkings: {kind: commercial, label: DraftKings（经 ESPN）}
+  football_data_avg: {kind: commercial, label: 多家机构平均（football-data.co.uk，仅历史）}

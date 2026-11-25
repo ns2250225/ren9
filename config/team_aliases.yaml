@@ -1,0 +1,227 @@
+# 球队中文名（体彩网全称/简称/常用名）→ 英文名映射。
+# zh:  中文名列表
+# en:  英文名列表（ESPN 常见写法，第一个为规范名）
+# fd:  football-data.co.uk 中的写法（与 en 差异较大时填写）
+# elo: ClubElo 中的写法（与 en 差异较大时填写）
+# 表中没有的球队会在运行时通过"同一赛事、同一比赛日的对阵配对"自动学习，
+# 学到的映射保存在 data/cache/learned_aliases.json，并在数据来源中标注为推断。
+teams:
+  # ---------- 英格兰 ----------
+  - {zh: [阿森纳], en: [Arsenal]}
+  - {zh: [阿斯顿维拉, 维拉], en: [Aston Villa]}
+  - {zh: [伯恩茅斯], en: [AFC Bournemouth, Bournemouth]}
+  - {zh: [布伦特福德], en: [Brentford]}
+  - {zh: [布莱顿], en: [Brighton & Hove Albion, Brighton]}
+  - {zh: [切尔西], en: [Chelsea]}
+  - {zh: [水晶宫], en: [Crystal Palace]}
+  - {zh: [埃弗顿], en: [Everton]}
+  - {zh: [富勒姆], en: [Fulham]}
+  - {zh: [利物浦], en: [Liverpool]}
+  - {zh: [曼彻斯特城, 曼城], en: [Manchester City], fd: Man City, elo: Man City}
+  - {zh: [曼彻斯特联, 曼联], en: [Manchester United], fd: Man United, elo: Man United}
+  - {zh: [纽卡斯尔联, 纽卡斯尔, 纽卡], en: [Newcastle United], fd: Newcastle, elo: Newcastle}
+  - {zh: [诺丁汉森林, 诺丁汉], en: [Nottingham Forest], fd: "Nott'm Forest", elo: Forest}
+  - {zh: [托特纳姆热刺, 托特纳姆, 热刺], en: [Tottenham Hotspur], fd: Tottenham, elo: Tottenham}
+  - {zh: [西汉姆联, 西汉姆], en: [West Ham United], fd: West Ham, elo: West Ham}
+  - {zh: [伍尔弗汉普顿, 伍尔弗, 狼队], en: [Wolverhampton Wanderers], fd: Wolves, elo: Wolves}
+  - {zh: [莱斯特城, 莱斯特], en: [Leicester City], fd: Leicester, elo: Leicester}
+  - {zh: [利兹联, 利兹], en: [Leeds United], fd: Leeds, elo: Leeds}
+  - {zh: [南安普敦, 南安普顿], en: [Southampton]}
+  - {zh: [伊普斯维奇], en: [Ipswich Town], fd: Ipswich, elo: Ipswich}
+  - {zh: [桑德兰], en: [Sunderland]}
+  - {zh: [伯恩利], en: [Burnley]}
+  - {zh: [谢菲尔德联, 谢菲联], en: [Sheffield United], fd: Sheffield United, elo: Sheffield United}
+  - {zh: [谢菲尔德星期三, 谢周三], en: [Sheffield Wednesday], fd: Sheffield Weds, elo: Sheffield Weds}
+  - {zh: [西布罗姆维奇, 西布罗姆, 西布朗], en: [West Bromwich Albion], fd: West Brom, elo: West Brom}
+  - {zh: [女王公园巡游者, 女王公园], en: [Queens Park Rangers], fd: QPR, elo: QPR}
+  - {zh: [斯托克城, 斯托克], en: [Stoke City], fd: Stoke, elo: Stoke}
+  - {zh: [赫尔城, 赫尔], en: [Hull City], fd: Hull, elo: Hull}
+  - {zh: [斯旺西], en: [Swansea City], fd: Swansea, elo: Swansea}
+  - {zh: [卡迪夫城, 卡迪夫], en: [Cardiff City], fd: Cardiff, elo: Cardiff}
+  - {zh: [诺维奇], en: [Norwich City], fd: Norwich, elo: Norwich}
+  - {zh: [米德尔斯堡], en: [Middlesbrough]}
+  - {zh: [普雷斯顿], en: [Preston North End], fd: Preston, elo: Preston}
+  - {zh: [布莱克本], en: [Blackburn Rovers], fd: Blackburn, elo: Blackburn}
+  - {zh: [布里斯托尔城, 布里斯托城], en: [Bristol City]}
+  - {zh: [考文垂], en: [Coventry City], fd: Coventry, elo: Coventry}
+  - {zh: [德比郡], en: [Derby County], fd: Derby, elo: Derby}
+  - {zh: [米尔沃尔], en: [Millwall]}
+  - {zh: [牛津联], en: [Oxford United], fd: Oxford, elo: Oxford}
+  - {zh: [普利茅斯], en: [Plymouth Argyle], fd: Plymouth, elo: Plymouth}
+  - {zh: [朴次茅斯], en: [Portsmouth]}
+  - {zh: [卢顿], en: [Luton Town], fd: Luton, elo: Luton}
+  - {zh: [沃特福德], en: [Watford]}
+  - {zh: [查尔顿], en: [Charlton Athletic], fd: Charlton, elo: Charlton}
+  - {zh: [雷克斯汉姆, 雷克瑟姆], en: [Wrexham]}
+  - {zh: [伯明翰], en: [Birmingham City], fd: Birmingham, elo: Birmingham}
+  - {zh: [博尔顿], en: [Bolton Wanderers], fd: Bolton, elo: Bolton}
+  - {zh: [哈德斯菲尔德], en: [Huddersfield Town], fd: Huddersfield, elo: Huddersfield}
+  - {zh: [雷丁], en: [Reading]}
+  - {zh: [维冈竞技, 维冈], en: [Wigan Athletic], fd: Wigan, elo: Wigan}
+  - {zh: [巴恩斯利], en: [Barnsley]}
+  - {zh: [布莱克浦], en: [Blackpool]}
+  - {zh: [罗瑟汉姆], en: [Rotherham United], fd: Rotherham, elo: Rotherham}
+  - {zh: [彼得堡联, 彼得堡], en: [Peterborough United], fd: Peterboro, elo: Peterborough}
+  - {zh: [林肯城, 林肯], en: [Lincoln City], fd: Lincoln, elo: Lincoln}
+  - {zh: [斯托克港], en: [Stockport County], fd: Stockport, elo: Stockport}
+  # ---------- 德国 ----------
+  - {zh: [拜仁慕尼黑, 拜仁], en: [Bayern Munich], elo: Bayern}
+  - {zh: [多特蒙德], en: [Borussia Dortmund], fd: Dortmund, elo: Dortmund}
+  - {zh: [勒沃库森], en: [Bayer Leverkusen], fd: Leverkusen, elo: Leverkusen}
+  - {zh: [莱比锡红牛, 莱比锡], en: [RB Leipzig], elo: RB Leipzig}
+  - {zh: [法兰克福], en: [Eintracht Frankfurt], fd: Ein Frankfurt, elo: Frankfurt}
+  - {zh: [门兴格拉德巴赫, 门兴], en: [Borussia Mönchengladbach, Borussia Monchengladbach], fd: "M'gladbach", elo: Gladbach}
+  - {zh: [斯图加特], en: [VfB Stuttgart, Stuttgart], fd: Stuttgart, elo: Stuttgart}
+  - {zh: [沃尔夫斯堡], en: [VfL Wolfsburg, Wolfsburg], fd: Wolfsburg, elo: Wolfsburg}
+  - {zh: [弗赖堡], en: [SC Freiburg, Freiburg], fd: Freiburg, elo: Freiburg}
+  - {zh: [霍芬海姆], en: [TSG Hoffenheim, Hoffenheim], fd: Hoffenheim, elo: Hoffenheim}
+  - {zh: [美因茨], en: [Mainz, Mainz 05, 1. FSV Mainz 05], fd: Mainz, elo: Mainz}
+  - {zh: [奥格斯堡], en: [FC Augsburg, Augsburg], fd: Augsburg, elo: Augsburg}
+  - {zh: [云达不来梅, 不来梅], en: [Werder Bremen], fd: Werder Bremen, elo: Werder}
+  - {zh: [柏林联合, 柏林联], en: [1. FC Union Berlin, Union Berlin], fd: Union Berlin, elo: Union Berlin}
+  - {zh: [海登海姆], en: [1. FC Heidenheim 1846, Heidenheim], fd: Heidenheim, elo: Heidenheim}
+  - {zh: [圣保利], en: [St. Pauli, FC St. Pauli], fd: St Pauli, elo: St Pauli}
+  - {zh: [科隆], en: [FC Cologne, 1. FC Köln, FC Koln], fd: FC Koln, elo: Koeln}
+  - {zh: [汉堡], en: [Hamburg SV, Hamburger SV], fd: Hamburg, elo: Hamburg}
+  - {zh: [波鸿], en: [VfL Bochum, Bochum], fd: Bochum, elo: Bochum}
+  - {zh: [荷尔斯泰因基尔, 基尔], en: [Holstein Kiel], fd: Holstein Kiel, elo: Holstein}
+  - {zh: [沙尔克04, 沙尔克], en: [Schalke 04, FC Schalke 04], fd: Schalke 04, elo: Schalke}
+  - {zh: [柏林赫塔], en: [Hertha Berlin, Hertha BSC], fd: Hertha, elo: Hertha}
+  - {zh: [杜塞尔多夫], en: [Fortuna Düsseldorf, Fortuna Dusseldorf], fd: Fortuna Dusseldorf, elo: Duesseldorf}
+  - {zh: [汉诺威96, 汉诺威], en: [Hannover 96], fd: Hannover, elo: Hannover}
+  - {zh: [纽伦堡], en: [1. FC Nürnberg, Nurnberg], fd: Nurnberg, elo: Nuernberg}
+  - {zh: [凯泽斯劳滕], en: [1. FC Kaiserslautern, Kaiserslautern], fd: Kaiserslautern, elo: Lautern}
+  - {zh: [达姆施塔特], en: [SV Darmstadt 98, Darmstadt], fd: Darmstadt, elo: Darmstadt}
+  # ---------- 意大利 ----------
+  - {zh: [国际米兰, 国米], en: [Internazionale, Inter Milan, Inter], fd: Inter, elo: Inter}
+  - {zh: [AC米兰, 米兰], en: [AC Milan, Milan], fd: Milan, elo: Milan}
+  - {zh: [尤文图斯], en: [Juventus]}
+  - {zh: [那不勒斯], en: [Napoli]}
+  - {zh: [罗马], en: [AS Roma, Roma], fd: Roma, elo: Roma}
+  - {zh: [拉齐奥], en: [Lazio]}
+  - {zh: [亚特兰大], en: [Atalanta]}
+  - {zh: [佛罗伦萨], en: [Fiorentina]}
+  - {zh: [博洛尼亚], en: [Bologna]}
+  - {zh: [都灵], en: [Torino]}
+  - {zh: [乌迪内斯], en: [Udinese]}
+  - {zh: [热那亚], en: [Genoa]}
+  - {zh: [卡利亚里], en: [Cagliari]}
+  - {zh: [维罗纳], en: [Hellas Verona, Verona], fd: Verona, elo: Verona}
+  - {zh: [莱切], en: [Lecce]}
+  - {zh: [帕尔马], en: [Parma]}
+  - {zh: [科莫], en: [Como]}
+  - {zh: [恩波利], en: [Empoli]}
+  - {zh: [蒙扎], en: [Monza]}
+  - {zh: [威尼斯], en: [Venezia]}
+  - {zh: [萨索洛], en: [Sassuolo]}
+  - {zh: [比萨], en: [Pisa]}
+  - {zh: [克雷莫纳, 克雷莫内塞], en: [Cremonese]}
+  - {zh: [弗洛西诺内], en: [Frosinone]}
+  - {zh: [萨勒尼塔纳], en: [Salernitana]}
+  - {zh: [桑普多利亚], en: [Sampdoria]}
+  - {zh: [巴勒莫], en: [Palermo]}
+  - {zh: [巴里], en: [Bari]}
+  - {zh: [斯佩齐亚], en: [Spezia]}
+  # ---------- 西班牙 ----------
+  - {zh: [皇家马德里, 皇马], en: [Real Madrid]}
+  - {zh: [巴塞罗那, 巴萨], en: [Barcelona]}
+  - {zh: [马德里竞技, 马竞], en: [Atlético Madrid, Atletico Madrid], fd: Ath Madrid, elo: Atletico}
+  - {zh: [毕尔巴鄂竞技, 毕尔巴鄂], en: [Athletic Club, Athletic Bilbao], fd: Ath Bilbao, elo: Bilbao}
+  - {zh: [皇家社会], en: [Real Sociedad], fd: Sociedad, elo: Sociedad}
+  - {zh: [皇家贝蒂斯, 贝蒂斯], en: [Real Betis], fd: Betis, elo: Betis}
+  - {zh: [比利亚雷亚尔, 比利亚雷], en: [Villarreal]}
+  - {zh: [瓦伦西亚], en: [Valencia]}
+  - {zh: [塞维利亚], en: [Sevilla]}
+  - {zh: [赫罗纳], en: [Girona]}
+  - {zh: [塞尔塔, 维戈塞尔塔], en: [Celta Vigo], fd: Celta, elo: Celta}
+  - {zh: [奥萨苏纳], en: [Osasuna]}
+  - {zh: [赫塔菲], en: [Getafe]}
+  - {zh: [巴列卡诺, 巴列卡诺闪电], en: [Rayo Vallecano], fd: Vallecano, elo: Rayo Vallecano}
+  - {zh: [马洛卡, 马略卡], en: [Mallorca]}
+  - {zh: [阿拉维斯], en: [Alavés, Alaves], fd: Alaves, elo: Alaves}
+  - {zh: [西班牙人], en: [Espanyol], fd: Espanol, elo: Espanyol}
+  - {zh: [拉斯帕尔马斯], en: [Las Palmas]}
+  - {zh: [莱加内斯], en: [Leganés, Leganes], fd: Leganes, elo: Leganes}
+  - {zh: [巴拉多利德], en: [Real Valladolid, Valladolid], fd: Valladolid, elo: Valladolid}
+  - {zh: [莱万特], en: [Levante]}
+  - {zh: [埃尔切], en: [Elche]}
+  - {zh: [奥维耶多], en: [Real Oviedo, Oviedo], fd: Oviedo, elo: Oviedo}
+  - {zh: [格拉纳达], en: [Granada]}
+  - {zh: [加的斯], en: [Cádiz, Cadiz], fd: Cadiz, elo: Cadiz}
+  - {zh: [阿尔梅里亚], en: [Almería, Almeria], fd: Almeria, elo: Almeria}
+  # ---------- 法国 ----------
+  - {zh: [巴黎圣日尔曼, 巴黎圣日耳曼, 巴黎], en: [Paris Saint-Germain, PSG], fd: Paris SG, elo: Paris SG}
+  - {zh: [马赛], en: [Marseille]}
+  - {zh: [里昂], en: [Lyon]}
+  - {zh: [摩纳哥], en: [AS Monaco, Monaco], fd: Monaco, elo: Monaco}
+  - {zh: [里尔], en: [Lille]}
+  - {zh: [尼斯], en: [Nice]}
+  - {zh: [朗斯], en: [Lens]}
+  - {zh: [雷恩], en: [Stade Rennais, Rennes], fd: Rennes, elo: Rennes}
+  - {zh: [斯特拉斯堡], en: [Strasbourg]}
+  - {zh: [南特], en: [Nantes]}
+  - {zh: [图卢兹], en: [Toulouse]}
+  - {zh: [布雷斯特], en: [Brest, Stade Brestois 29], fd: Brest, elo: Brest}
+  - {zh: [兰斯], en: [Stade de Reims, Reims], fd: Reims, elo: Reims}
+  - {zh: [蒙彼利埃], en: [Montpellier]}
+  - {zh: [欧塞尔], en: [Auxerre, AJ Auxerre], fd: Auxerre, elo: Auxerre}
+  - {zh: [昂热], en: [Angers]}
+  - {zh: [勒阿弗尔], en: [Le Havre AC, Le Havre], fd: Le Havre, elo: Le Havre}
+  - {zh: [圣埃蒂安], en: [Saint-Étienne, Saint-Etienne, St Etienne], fd: St Etienne, elo: Saint-Etienne}
+  - {zh: [洛里昂], en: [Lorient]}
+  - {zh: [梅斯], en: [Metz]}
+  - {zh: [巴黎FC], en: [Paris FC], fd: Paris FC, elo: Paris FC}
+  # ---------- 荷兰 / 葡萄牙 / 比利时 / 苏格兰 / 土耳其 / 希腊 ----------
+  - {zh: [阿贾克斯], en: [Ajax Amsterdam, Ajax], fd: Ajax, elo: Ajax}
+  - {zh: [埃因霍温, PSV埃因霍温], en: [PSV Eindhoven, PSV], fd: PSV Eindhoven, elo: PSV}
+  - {zh: [费耶诺德], en: [Feyenoord Rotterdam, Feyenoord], fd: Feyenoord, elo: Feyenoord}
+  - {zh: [阿尔克马尔], en: [AZ Alkmaar, AZ], fd: AZ Alkmaar, elo: Alkmaar}
+  - {zh: [特温特], en: [FC Twente, Twente], fd: Twente, elo: Twente}
+  - {zh: [乌德勒支], en: [FC Utrecht, Utrecht], fd: Utrecht, elo: Utrecht}
+  - {zh: [本菲卡], en: [Benfica]}
+  - {zh: [波尔图], en: [FC Porto, Porto], fd: Porto, elo: Porto}
+  - {zh: [里斯本竞技, 葡萄牙体育], en: [Sporting CP, Sporting Lisbon], fd: Sp Lisbon, elo: Sporting}
+  - {zh: [布拉加], en: [Braga, SC Braga], fd: Sp Braga, elo: Braga}
+  - {zh: [布鲁日], en: [Club Brugge], fd: Club Brugge, elo: Brugge}
+  - {zh: [安德莱赫特], en: [Anderlecht]}
+  - {zh: [圣吉罗斯联合, 圣吉罗斯], en: [Union St.-Gilloise, Union Saint-Gilloise], fd: St. Gilloise, elo: Union SG}
+  - {zh: [根克], en: [Racing Genk, Genk], fd: Genk, elo: Genk}
+  - {zh: [凯尔特人], en: [Celtic]}
+  - {zh: [流浪者, 格拉斯哥流浪者], en: [Rangers]}
+  - {zh: [加拉塔萨雷], en: [Galatasaray]}
+  - {zh: [费内巴切], en: [Fenerbahce, Fenerbahçe], fd: Fenerbahce, elo: Fenerbahce}
+  - {zh: [贝西克塔斯], en: [Besiktas, Beşiktaş], fd: Besiktas, elo: Besiktas}
+  - {zh: [特拉布宗体育, 特拉布宗], en: [Trabzonspor]}
+  - {zh: [奥林匹亚科斯], en: [Olympiacos, Olympiakos], fd: Olympiakos, elo: Olympiakos}
+  - {zh: [雅典AEK], en: [AEK Athens], fd: AEK, elo: AEK}
+  - {zh: [帕纳辛纳科斯], en: [Panathinaikos]}
+  - {zh: [塞萨洛尼基PAOK, PAOK], en: [PAOK Salonika, PAOK], fd: PAOK, elo: PAOK}
+  # ---------- 欧战常客 ----------
+  - {zh: [博德闪耀], en: [Bodo/Glimt, Bodø/Glimt], elo: Bodoe/Glimt}
+  - {zh: [LASK林茨, 林茨], en: [LASK Linz, LASK], elo: LASK}
+  - {zh: [布拉迪斯拉发, 布拉迪斯拉发斯拉夫人], en: [Slovan Bratislava], elo: Slovan Bratislava}
+  - {zh: [布拉格斯拉维亚], en: [Slavia Prague], elo: Slavia Praha}
+  - {zh: [布拉格斯巴达], en: [Sparta Prague], elo: Sparta Praha}
+  - {zh: [萨巴赫], en: [Sabah FK, Sabah]}
+  - {zh: [维京], en: [Viking FK, Viking], elo: Viking}
+  - {zh: [顿涅茨克矿工, 矿工], en: [Shakhtar Donetsk], elo: Shakhtar}
+  - {zh: [基辅迪纳摩], en: [Dynamo Kyiv, Dynamo Kiev], elo: Dynamo Kyiv}
+  - {zh: [萨尔茨堡红牛, 萨尔茨堡], en: [FC Salzburg, RB Salzburg, Red Bull Salzburg], elo: Salzburg}
+  - {zh: [格拉茨风暴], en: [Sturm Graz], elo: Sturm Graz}
+  - {zh: [伯尔尼年轻人, 年轻人], en: [Young Boys, BSC Young Boys], elo: Young Boys}
+  - {zh: [巴塞尔], en: [FC Basel, Basel], elo: Basel}
+  - {zh: [贝尔格莱德红星, 红星], en: [Red Star Belgrade, Crvena zvezda], elo: Crvena Zvezda}
+  - {zh: [萨格勒布迪纳摩], en: [Dinamo Zagreb], elo: Dinamo Zagreb}
+  - {zh: [哥本哈根], en: [FC Copenhagen, F.C. København], elo: FC Kobenhavn}
+  - {zh: [中日德兰], en: [FC Midtjylland, Midtjylland], elo: Midtjylland}
+  - {zh: [马尔默], en: [Malmo FF, Malmö FF], elo: Malmoe}
+  - {zh: [卡拉巴赫], en: [Qarabag, FK Qarabag], elo: Karabakh Agdam}
+  - {zh: [莫尔德], en: [Molde]}
+  - {zh: [罗森博格], en: [Rosenborg]}
+  # ---------- 亚洲（示例，其余依赖对阵配对自动学习） ----------
+  - {zh: [大阪钢巴], en: [Gamba Osaka]}
+  - {zh: [鹿岛鹿角], en: [Kashima Antlers]}
+  - {zh: [全北现代], en: [Jeonbuk Hyundai Motors, Jeonbuk Motors]}
+  - {zh: [柏太阳神], en: [Kashiwa Reysol]}
+  - {zh: [上海海港], en: [Shanghai Port]}
+  - {zh: [北京国安], en: [Beijing Guoan]}

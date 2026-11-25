@@ -1,0 +1,56 @@
+# 模型权重与参数。
+# initial 为初始配置。scripts/backtest.py（时间切分回测）或
+# scripts/review_results.py --optimize-weights 学习到的参数写入同目录的
+# model_weights.learned.yaml，运行时自动合并到下面的 learned 字段并优先使用
+# （删除该文件即可恢复初始配置）。
+ensemble:
+  initial:
+    elo: 0.15
+    poisson: 0.20
+    dixon_coles: 0.35
+    market: 0.30
+  # 学习权重时的约束：市场概率只是输入之一，不能单独决定最终概率；
+  # 每个模型保留最低权重，保证没有赔率的比赛仍可由其余模型给出预测。
+  max_market_weight: 0.60
+  min_model_weight: 0.05
+  use_learned: true
+  learned: null            # {weights: {...}, temperature: 1.0, fitted_at: ..., samples: N, source: ...}
+
+calibration:
+  temperature: 1.0         # 概率校准温度（>1 压平，<1 锐化）；learned 存在时被覆盖
+
+elo:
+  home_advantage: 65       # 主场优势（Elo 分）
+  draw_nu: 0.78            # Davidson 平局参数
+  k_factor: 20             # 自算 Elo 的 K 值
+  initial_rating: 1500
+
+poisson:
+  half_life_days: 240      # 时间衰减半衰期
+  shrink_matches: 4        # 向联赛均值收缩的伪样本场数
+  xg_blend: 0.4            # 有 xG 时，进球与 xG 的混合比例（0 = 只用进球）
+  max_goals: 10
+
+dixon_coles:
+  half_life_days: 240
+  ridge: 0.6               # 攻防参数的 L2 正则，样本少时防止过拟合
+  max_goals: 10
+
+risk:
+  # 各风险因子权重（因子取值 0~1；数据缺失的因子标记 unknown，不当作 0）
+  weights:
+    closeness: 0.30        # 概率接近
+    disagreement: 0.20     # 模型分歧
+    data_gap: 0.15         # 数据不足
+    odds_move: 0.10        # 赔率波动
+    lineup: 0.10           # 伤停 / 首发不确定
+    fatigue: 0.07          # 赛程压力
+    context: 0.08          # 赛事性质（杯赛、保级、争冠）
+  unknown_factor_value: 0.5   # unknown 因子按该值计入，并在报告中提示
+  thresholds:
+    low: 0.33
+    medium: 0.52
+
+selector:
+  initial: {probability: 0.40, agreement: 0.20, data_quality: 0.15, risk: 0.25}
+  learned: null

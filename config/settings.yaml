@@ -1,0 +1,74 @@
+general:
+  language: zh-CN
+  timezone: Asia/Shanghai
+  currency: CNY
+
+lottery:
+  game_type: ren9          # ren9 | jczq
+  expected_matches: 14
+  selected_matches: 9
+  unit_price: 2
+
+strategy:
+  default: balanced
+  # max_bets: 每套方案允许的最大注数（预算 = max_bets × unit_price，可用 --budget 覆盖）
+  # max_doubles / max_triples: 双选、全选场次上限
+  # score_weights: 14 选 9 的 MatchScore 权重（概率优势/模型一致/数据质量/风险惩罚）
+  # cost_aversion: 成本厌恶系数 λ。把某场从单选升为双选，只有覆盖率提升倍数 > 2^λ 才值得
+  # cold_alpha: 冷门偏好 α。选项价值 = 模型概率 × 市场概率^(-α)；0 = 只看命中概率
+  presets:
+    conservative:
+      max_bets: 8
+      max_doubles: 3
+      max_triples: 0
+      cost_aversion: 0.30
+      cold_alpha: 0.0
+      score_weights: {probability: 0.35, agreement: 0.20, data_quality: 0.15, risk: 0.30}
+    balanced:
+      max_bets: 32
+      max_doubles: 5
+      max_triples: 1
+      cost_aversion: 0.15
+      cold_alpha: 0.0
+      score_weights: {probability: 0.40, agreement: 0.20, data_quality: 0.15, risk: 0.25}
+    aggressive:
+      max_bets: 128
+      max_doubles: 7
+      max_triples: 3
+      cost_aversion: 0.05
+      cold_alpha: 0.35
+      score_weights: {probability: 0.50, agreement: 0.15, data_quality: 0.15, risk: 0.20}
+
+data:
+  cache_enabled: true
+  cache_ttl: 3600                 # 秒，默认 HTTP 缓存有效期
+  schedule_ttl: 600               # 官方赛单缓存有效期
+  odds_ttl: 600                   # 赔率缓存有效期
+  history_ttl: 21600              # 当季历史数据缓存有效期
+  archive_ttl: 2592000            # 已结束月份/赛季数据缓存有效期
+  history_months: 15              # ESPN 历史赛果回溯月数
+  min_history_matches: 4          # 单队最少历史场次，低于该值不运行 Poisson / Dixon-Coles
+  full_weight_matches: 20         # 单队历史场次达到该值，历史类模型才用满权重（不足时按比例降权）
+  require_official_schedule: true
+  allow_manual_schedule: true
+  http_timeout: 20
+  http_retries: 2
+
+models:
+  elo: true
+  poisson: true
+  dixon_coles: true
+  market: true
+
+report:
+  format:
+    - markdown
+    - json
+  show_all_matches: true
+  show_excluded_matches: true
+
+safety:
+  never_invent_data: true
+  require_source_timestamp: true
+  stop_on_invalid_schedule: true
+  min_data_quality: 0.35          # 低于该值的比赛视为数据严重缺失，不进入正常推荐
