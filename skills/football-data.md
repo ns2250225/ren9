@@ -82,6 +82,9 @@ python ../scripts/fetch_team_data.py --date today --full      # 完整 JSON
 - **缺失就是缺失**：采集不到的字段为 `null` 并写入 `missing`，绝不当作 0。
 - **首发**：只有 ESPN 已发布完整 11 人首发才标记 `official_lineup_published: true`；
   `expected_lineup` 恒为 `null`（不采集预测首发）。
-- **伤停**：没有已验证的免费来源，恒为 `null`（未知）；不要把传闻当成已确认伤停。
+- **伤停**：没有已验证的免费来源，`injuries` / `suspensions` 恒为 `null`（未知）；不要把传闻当成已确认伤停。
+- **主力缺阵**（`lineup.absences`）：官方首发公布后，对比该队最近几场（ESPN 近 5 场）的首发推断——
+  近期常规首发这次不在大名单记为缺阵，坐替补席按轮换部分计入；`absence_score` 为 0~1 的缺阵指数。
+  首发未公布或近期首发记录不足时 `known: false`。缺阵原因（伤病 / 停赛 / 轮换）未知，转述时不要说成"受伤"。
 - 历史数据只取比赛日之前的比赛（`ref_date`），避免数据泄漏。
 - 单个数据源失败不会中断流程，失败原因记录在输出的 `notes` 中。

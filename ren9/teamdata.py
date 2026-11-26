@@ -7,14 +7,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 
-from ren9 import history
+from ren9 import history, lineup
 from ren9.common import data_sources, now_iso, parse_dt
 from ren9.teams import TeamResolver, best_match, name_score
 from providers import clubelo, espn, understat
 from providers.base import ProviderError
 
 ALWAYS_MISSING = [
-    "伤停/停赛名单（无已验证的免费来源，状态未知）",
+    "伤停/停赛名单（无已验证的免费来源；主力缺阵仅在官方首发公布后由首发对比推断）",
     "预计首发（不采集传闻；仅在官方首发公布后记录）",
     "主教练与战术信息（无已验证的免费来源）",
 ]
@@ -156,6 +156,27 @@ class Collector:
         return result
 
     # ----- 各类数据 -----
+    def absences(self, ev: dict | None, side: str, lu: dict | None, summ: dict | None, ko) -> dict:
+        """官方首发公布后，对比该队最近几场的首发，推断主力缺阵（见 ren9.lineup）。"""
+        if not (ev and lu and lu["official"]):
+            return lineup.assess_team(None, [])
+        tid = ev[side]["id"]
+        kd = ko.astimezone(timezone.utc).date().isoformat() if ko else None
+        past = []
+        for g in (summ or {}).get("last_five", {}).get(tid) or []:
+            # 只用本场之前的比赛（赛后重跑时 ESPN 的近 5 场可能已包含本场）
+            if not g.get("event_id") or g["event_id"] == ev["event_id"] or (kd and g.get("date") and g["date"] >= kd):
+                continue
+            try:
+                lus, _ = espn.match_lineups(ev["league"], g["event_id"])
+            except ProviderError as exc:
+                self.notes.append(f"ESPN 历史首发不可用 ({ev[side]['name']} {g.get('date')}): {exc}")
+                continue
+            starters = [p for p in (lus.get(tid) or {}).get("players") or [] if p["starter"]]
+            if starters:
+                past.append(starters)
+        return lineup.assess_team(lu["players"], past)
+
     def standings(self, slug: str):
         if slug not in self._standings:
             try:
@@ -359,6 +380,7 @@ class Collector:
                 "expected_lineup": None,
                 "injuries": None,
                 "suspensions": None,
+                "absences": self.absences(ev, side, lu, summ, ko),
                 "source": summ_src["name"] if summ_src else None,
                 "updated_at": summ_src["fetched_at"] if summ_src else None,
             }
@@ -385,6 +407,8 @@ class Collector:
                 missing.append(f"{label} xG / xGA")
             if t["schedule"] is None:
                 missing.append(f"{label}休息天数")
+            if not t["lineup"]["absences"]["known"]:
+                missing.append(f"{label}主力缺阵情况（{t['lineup']['absences']['reason']}）")
             out["teams"][side] = t
 
         # ESPN 提供的商业机构赔率（原样保留，由赔率模块分析）

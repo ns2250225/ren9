@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from ren9 import lineup
 from ren9.common import OUTCOMES, model_weights, now_iso, settings
 
 FACTOR_ZH = {
@@ -73,10 +74,20 @@ def assess_match(pred: dict, td: dict | None, od: dict | None, form_data: dict |
 
     teams = (td or {}).get("teams") or {}
     lineups = [((teams.get(s) or {}).get("lineup") or {}).get("official_lineup_published") for s in ("home", "away")]
-    if td and all(lineups):
-        put("lineup", 0.15, "双方官方首发已公布")
+    absent = [((teams.get(s) or {}).get("lineup") or {}).get("absences") or {} for s in ("home", "away")]
+    if td and all(lineups) and all(a.get("known") for a in absent):
+        # 首选一方的主力缺阵最伤稳定性；对手缺阵也带来不确定性，但影响小
+        ah, aa = absent[0]["absence_score"], absent[1]["absence_score"]
+        top = max(OUTCOMES, key=lambda k: p[k])
+        mine, other = (ah, aa) if top == "win" else (aa, ah) if top == "loss" else (max(ah, aa), min(ah, aa))
+        # 正常轮换下每队都会有几名常规首发不首发，只有超出轮换基线的部分才算风险
+        rot = lineup.config()["rotation_baseline"]
+        put("lineup", 0.15 + 1.5 * max(0.0, mine - rot) + 0.5 * max(0.0, other - rot),
+            f"主力缺阵指数 主 {ah:.2f} / 客 {aa:.2f}（缺 {len(absent[0]['missing'])} / {len(absent[1]['missing'])} 人，由首发推断）")
+    elif td and all(lineups):
+        put("lineup", 0.15, "双方官方首发已公布（近期首发记录不足，无法判断主力缺阵）")
     else:
-        put("lineup", None, "官方首发未公布，伤停信息无可靠来源")
+        put("lineup", None, "官方首发未公布，无法判断主力缺阵；伤停名单无可靠来源")
 
     rests = [((teams.get(s) or {}).get("schedule") or {}) for s in ("home", "away")]
     if all(r.get("rest_days") is not None for r in rests):

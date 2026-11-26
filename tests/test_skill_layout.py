@@ -68,6 +68,26 @@ def test_package_has_at_most_two_directory_levels():
     assert "SKILL.md" in files and "skills/ren9-schedule.md" in files and "scripts/generate_report.py" in files
     assert all(f.count("/") <= 1 for f in files), [f for f in files if f.count("/") > 1]
     assert not any(f.startswith("data/") for f in files)
+    assert all(f in files for f in package.REQUIRED)
+    assert "ren9/form.py" in files and "ren9/lineup.py" in files
+
+
+def test_package_skips_backup_and_temp_files(tmp_path, monkeypatch):
+    """备份 / 临时文件不进包；缺少核心文件时报错而不是打出残缺的包。"""
+    sys.path.insert(0, str(ROOT))
+    import package
+
+    for rel in package.REQUIRED:
+        (tmp_path / rel).parent.mkdir(exist_ok=True)
+        (tmp_path / rel).write_text("x", encoding="utf-8")
+    for junk in ("ren9/form.py.backup", "ren9/risk.py.bak", "ren9/predict.py.orig", "notes.tmp", "ren9/form.py~",
+                 "run.log"):
+        (tmp_path / junk).write_text("x", encoding="utf-8")
+    monkeypatch.setattr(package, "ROOT", tmp_path)
+    assert sorted(package.collect()) == sorted(package.REQUIRED)
+    (tmp_path / "ren9" / "lineup.py").unlink()
+    with pytest.raises(SystemExit, match="ren9/lineup.py"):
+        package.collect()
 
 
 def test_no_platform_specific_dependencies():

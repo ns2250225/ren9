@@ -185,6 +185,16 @@ def shift_probs(p: dict, signal: float) -> dict:
     return {k: raw[k] / total for k in OUTCOMES}
 
 
+def capped_shift(p: dict, signal: float, max_shift: float) -> tuple[dict, bool]:
+    """shift_probs 加上限：任一项概率的变动超过 max_shift 时按比例缩回。返回（概率, 是否触及上限）。"""
+    adj = shift_probs(p, signal)
+    biggest = max(abs(adj[k] - p[k]) for k in OUTCOMES)
+    if biggest <= max_shift:
+        return adj, False
+    t = max_shift / biggest                 # p 与 adj 的凸组合，仍是合法概率
+    return {k: p[k] + t * (adj[k] - p[k]) for k in OUTCOMES}, True
+
+
 def adjust_probabilities(p: dict, form_match: dict | None, cfg: dict | None = None) -> tuple[dict, dict]:
     """用状态差与战意差修正胜平负概率，返回（修正后概率, 修正说明）。
 
@@ -203,12 +213,7 @@ def adjust_probabilities(p: dict, form_match: dict | None, cfg: dict | None = No
     signal = cfg["form_coef"] * (fd or 0.0) + cfg["motivation_coef"] * (mg or 0.0)
     if abs(signal) < 1e-9:
         return p, {**info, "reason": "双方状态与战意相当，或修正系数为 0"}
-    adj = shift_probs(p, signal)
-    biggest = max(abs(adj[k] - p[k]) for k in OUTCOMES)
-    capped = biggest > cfg["max_shift"]
-    if capped:                              # 超过上限时按比例缩回（p 与 adj 的凸组合，仍是合法概率）
-        t = cfg["max_shift"] / biggest
-        adj = {k: p[k] + t * (adj[k] - p[k]) for k in OUTCOMES}
+    adj, capped = capped_shift(p, signal, cfg["max_shift"])
     return adj, {**info, "applied": True, "signal": round(signal, 4), "capped": capped,
                  "before": {k: round(p[k], 4) for k in OUTCOMES},
                  "delta": {k: round(adj[k] - p[k], 4) for k in OUTCOMES}}

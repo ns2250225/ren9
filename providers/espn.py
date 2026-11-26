@@ -205,6 +205,38 @@ def standings(league: str, refresh: bool = False) -> tuple[dict[str, dict], dict
     return table, res.source(f"ESPN-standings-{league}")
 
 
+def _lineups(data: dict) -> dict[str, dict]:
+    """比赛详情中的双方名单：{球队 id: {official, formation, starters, players}}。
+
+    players 是完整的比赛日名单 [{id, name, position, starter}]（首发 + 替补）；
+    只有 ESPN 已发布完整 11 人首发才算官方首发，否则 starters / players 为空。
+    """
+    out = {}
+    for r in data.get("rosters") or []:
+        tid = str((r.get("team") or {}).get("id") or "")
+        players = []
+        for p in r.get("roster") or []:
+            a = p.get("athlete") or {}
+            if a.get("id") and a.get("displayName"):
+                players.append({"id": str(a["id"]), "name": a["displayName"],
+                                "position": (p.get("position") or {}).get("abbreviation"),
+                                "starter": bool(p.get("starter"))})
+        official = sum(1 for p in players if p["starter"]) >= 11
+        out[tid] = {
+            "official": official,
+            "formation": r.get("formation") or None,
+            "starters": [p["name"] for p in players if p["starter"]] if official else [],
+            "players": players if official else [],
+        }
+    return out
+
+
+def match_lineups(league: str, event_id: str) -> tuple[dict, dict]:
+    """已结束比赛的双方名单（内容不再变化，按归档有效期缓存）。"""
+    data, res = _get(_url("summary", league=league, event=event_id), settings()["data"].get("archive_ttl", 2592000))
+    return _lineups(data), res.source("ESPN-summary")
+
+
 def summary(league: str, event_id: str, refresh: bool = False) -> tuple[dict, dict]:
     """单场详情：近 5 场（全部赛事）、官方首发是否公布、商业赔率。"""
     data, res = _get(_url("summary", league=league, event=event_id), settings()["data"].get("odds_ttl", 600), refresh)
@@ -215,6 +247,7 @@ def summary(league: str, event_id: str, refresh: bool = False) -> tuple[dict, di
         for g in block.get("events") or []:
             games.append(
                 {
+                    "event_id": str(g.get("id") or "") or None,
                     "date": (g.get("gameDate") or "")[:10],
                     "result": g.get("gameResult"),        # W / D / L
                     "score": g.get("score"),
@@ -224,19 +257,7 @@ def summary(league: str, event_id: str, refresh: bool = False) -> tuple[dict, di
                 }
             )
         out["last_five"][tid] = sorted(games, key=lambda x: x["date"], reverse=True)
-    for r in data.get("rosters") or []:
-        tid = str((r.get("team") or {}).get("id") or "")
-        players = r.get("roster") or []
-        starters = [
-            (p.get("athlete") or {}).get("displayName")
-            for p in players
-            if p.get("starter") and (p.get("athlete") or {}).get("displayName")
-        ]
-        out["lineups"][tid] = {
-            "official": len(starters) >= 11,      # 只有 ESPN 已发布完整首发才算官方首发
-            "formation": r.get("formation") or None,
-            "starters": starters if len(starters) >= 11 else [],
-        }
+    out["lineups"] = _lineups(data)
     injuries = data.get("injuries")
     out["injuries"] = injuries if injuries else None   # 该接口通常不提供足球伤停，None = 未知
     for o in data.get("pickcenter") or data.get("odds") or []:

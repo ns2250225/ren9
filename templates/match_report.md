@@ -35,6 +35,10 @@
 
 {{form_analysis}}
 
+### 主力缺阵
+
+{{absence_analysis}}
+
 ## 历史交锋
 
 {{h2h}}

@@ -4,7 +4,8 @@ from __future__ import annotations
 import pytest
 
 from conftest import make_pred
-from ren9 import backtest, form, predict, risk
+from providers import espn
+from ren9 import backtest, form, lineup, predict, risk
 
 CFG = {"enabled": True, "form_coef": 0.15, "motivation_coef": 0.15, "max_shift": 0.04, "source": "test"}
 P = {"win": 0.45, "draw": 0.28, "loss": 0.27}
@@ -113,3 +114,96 @@ def test_backtest_form_features_only_use_earlier_matches():
     assert feats[("2025-08-01", "A", "B")] == {"form_diff": None, "motivation_gap": None}   # 赛前没有任何数据
     assert feats[("2025-08-22", "B", "A")]["form_diff"] < 0                                  # B 三连败，A 三连胜
     assert feats[("2025-08-29", "A", "B")]["form_diff"] > 0
+
+
+# ---------- 主力缺阵（由官方首发推断） ----------
+
+LCFG = {"enabled": True, "coef": 0.5, "max_shift": 0.04, "regular_start_rate": 0.6, "min_games": 3,
+        "bench_weight": 0.4, "source": "test"}
+
+
+def xi(ids):
+    return [{"id": str(i), "name": f"P{i}", "position": "M"} for i in ids]
+
+
+def squad(starters, bench=()):
+    return ([{"id": str(i), "name": f"P{i}", "position": "M", "starter": True} for i in starters]
+            + [{"id": str(i), "name": f"P{i}", "position": "SUB", "starter": False} for i in bench])
+
+
+HISTORY = [xi(range(1, 12))] * 4 + [xi(list(range(1, 10)) + [20, 21])]        # 1~9 五场全首发，10/11 四场
+
+
+def test_regulars_come_from_recent_starts():
+    regs = {r["id"]: r for r in lineup.regulars(HISTORY, LCFG)}
+    assert set(regs) == {str(i) for i in range(1, 12)}                     # 20/21 只首发 1 场，不算主力
+    assert regs["1"]["importance"] == 1.0 and regs["10"]["importance"] == 0.8
+    assert lineup.regulars(HISTORY[:2], LCFG) == []                         # 记录不足
+
+
+def test_absences_unknown_without_lineup_or_history():
+    assert lineup.assess_team(None, HISTORY, LCFG)["known"] is False
+    short = lineup.assess_team(squad(range(1, 12)), HISTORY[:2], LCFG)
+    assert short["known"] is False and short["absence_score"] is None and "不足" in short["reason"]
+
+
+def test_absence_score_weights_squad_omission_above_bench():
+    full = lineup.assess_team(squad(range(1, 12)), HISTORY, LCFG)
+    assert full["known"] and full["absence_score"] == 0.0 and full["missing"] == []
+    out = lineup.assess_team(squad(list(range(3, 12)) + [30, 31]), HISTORY, LCFG)             # 1、2 不在大名单
+    bench = lineup.assess_team(squad(list(range(3, 12)) + [30, 31], bench=[1, 2]), HISTORY, LCFG)
+    assert out["absence_score"] > bench["absence_score"] > 0
+    assert {m["status"] for m in out["missing"]} == {"not_in_squad"}
+    assert {m["status"] for m in bench["missing"]} == {"bench"}
+    assert out["absence_score"] == pytest.approx(2 / (9 + 2 * 0.8), abs=1e-4)
+    assert "不在大名单" in lineup.describe(out) and "主力齐整" in lineup.describe(full)
+
+
+def test_lineup_adjustment_favours_the_side_with_fewer_absences():
+    weak = {"known": True, "absence_score": 0.3, "missing": [{}] * 3}
+    fine = {"known": True, "absence_score": 0.0, "missing": []}
+    adj, info = lineup.adjust_probabilities(P, weak, fine, LCFG)             # 主队缺阵多
+    assert info["applied"] and adj["win"] < P["win"] and adj["loss"] > P["loss"]
+    assert max(abs(adj[k] - P[k]) for k in P) <= 0.04 + 1e-9 and sum(adj.values()) == pytest.approx(1.0)
+    rev, _ = lineup.adjust_probabilities(P, fine, weak, LCFG)
+    assert rev["win"] > P["win"]
+    for h, a, cfg in ((None, fine, LCFG), ({"known": False, "reason": "官方首发未公布"}, fine, LCFG),
+                      (weak, weak, LCFG), (weak, fine, {**LCFG, "enabled": False})):
+        same, info = lineup.adjust_probabilities(P, h, a, cfg)
+        assert same == P and not info["applied"] and info["reason"]
+
+
+def td_with(home_abs, away_abs):
+    def side(a):
+        return {"lineup": {"official_lineup_published": True, "absences": a}}
+    return {"teams": {"home": side(home_abs), "away": side(away_abs)}}
+
+
+def test_prediction_and_risk_use_absences():
+    od = {"market": {"fair_probability": {"home": 0.45, "draw": 0.28, "away": 0.27}, "sources_used": ["x"]},
+          "sources": ["x"]}
+    m = {"match_id": "m1", "seq": 1, "home_team": "主", "away_team": "客"}
+    hurt = {"known": True, "absence_score": 0.4, "missing": [{}] * 4}
+    fine = {"known": True, "absence_score": 0.0, "missing": []}
+    plain = predict.predict_match(m, None, od, True)
+    weakened = predict.predict_match(m, td_with(hurt, fine), od, True)
+    assert not plain["lineup_adjustment"]["applied"]
+    assert weakened["lineup_adjustment"]["applied"]
+    assert weakened["probabilities"]["win"] < plain["probabilities"]["win"]
+    pred = make_pred(1, (0.55, 0.25, 0.20))
+    r_fine = risk.assess_match(pred, td_with(fine, fine), None)
+    r_hurt = risk.assess_match(pred, td_with(hurt, fine), None)             # 首选（主胜）一方主力缺阵
+    r_opp = risk.assess_match(pred, td_with(fine, hurt), None)
+    assert (r_hurt["factors"]["lineup"]["value"] > r_opp["factors"]["lineup"]["value"]
+            > r_fine["factors"]["lineup"]["value"])
+    assert risk.assess_match(pred, None, None)["factors"]["lineup"]["known"] is False
+
+
+def test_espn_lineups_keep_full_matchday_squad():
+    roster = [{"athlete": {"id": i, "displayName": f"P{i}"}, "starter": i <= 11,
+               "position": {"abbreviation": "G" if i == 1 else "SUB" if i > 11 else "M"}} for i in range(1, 19)]
+    lus = espn._lineups({"rosters": [{"team": {"id": 7}, "formation": "4-3-3", "roster": roster},
+                                     {"team": {"id": 8}, "roster": roster[:5]}]})
+    assert lus["7"]["official"] and len(lus["7"]["starters"]) == 11 and len(lus["7"]["players"]) == 18
+    assert lus["7"]["players"][0] == {"id": "1", "name": "P1", "position": "G", "starter": True}
+    assert not lus["8"]["official"] and lus["8"]["players"] == [] and lus["8"]["starters"] == []

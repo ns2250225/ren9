@@ -48,6 +48,19 @@ form_adjust:
   use_learned: true
   learned: null            # {form_coef, motivation_coef, samples, fitted_at, ...}
 
+lineup_adjust:
+  # 主力缺阵修正：官方首发公布后（开球前约 1 小时），把本场首发与该队最近几场首发对比，
+  # 常规首发这次没首发即记为缺阵。缺阵指数 0~1 = 缺阵主力的重要性 / 全部主力的重要性。
+  #   s = coef × （客队缺阵指数 − 主队缺阵指数），再做与 form_adjust 相同的对数几率平移。
+  # 没有历史首发数据可回测，coef 是未经校准的经验值；想关闭修正把 enabled 设为 false。
+  enabled: true
+  coef: 0.5
+  max_shift: 0.04          # 任一项概率的最大变动（绝对值）
+  regular_start_rate: 0.6  # 近期首发率达到该值才算主力
+  min_games: 3             # 至少要有这么多场近期首发记录，否则缺阵情况记为未知
+  bench_weight: 0.4        # 主力坐替补席（轮换）时按该比例计入缺阵
+  rotation_baseline: 0.15  # 正常轮换下的典型缺阵指数；风险因子只计超出该值的部分
+
 risk:
   # 各风险因子权重（因子取值 0~1；数据缺失的因子标记 unknown，不当作 0）
   weights:
@@ -55,7 +68,7 @@ risk:
     disagreement: 0.18     # 模型分歧
     data_gap: 0.14         # 数据不足
     odds_move: 0.09        # 赔率波动
-    lineup: 0.09           # 伤停 / 首发不确定
+    lineup: 0.09           # 首发未公布 / 主力缺阵（由首发推断）
     fatigue: 0.07          # 赛程压力
     context: 0.08          # 赛事性质（杯赛、保级、争冠）
     form_motivation: 0.10  # 状态/战意是否支持推荐方向

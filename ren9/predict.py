@@ -11,7 +11,7 @@ from models import elo as elo_model
 from models import ensemble
 from models.dixon_coles import DixonColesModel
 from models.poisson import PoissonModel, calibrate_matrix, handicap_probs
-from ren9 import form, history
+from ren9 import form, history, lineup
 from ren9.common import OUTCOMES, data_sources, model_weights, now_iso, rnd, settings
 
 _fit_memo: dict[tuple, dict] = {}
@@ -188,6 +188,11 @@ def predict_match(m: dict, td: dict | None, od: dict | None, sched_official: boo
     adjusted, adj_info = form.adjust_probabilities(combined["probabilities"], form_match)
     out["form_adjustment"] = adj_info
     out["probabilities_before_form"] = round_probs(combined["probabilities"])
+    # 主力缺阵修正：官方首发公布后，按双方主力缺阵差再做一次有上限的平移（见 lineup.adjust_probabilities）
+    sides = (td or {}).get("teams") or {}
+    absent = {s: ((sides.get(s) or {}).get("lineup") or {}).get("absences") for s in ("home", "away")}
+    adjusted, lu_info = lineup.adjust_probabilities(adjusted, absent["home"], absent["away"])
+    out["lineup_adjustment"] = lu_info
     final = round_probs(adjusted)
     top = max(OUTCOMES, key=lambda k: final[k])
     out.update(

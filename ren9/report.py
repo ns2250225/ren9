@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from ren9.common import (OUTCOME_ZH, OUTCOMES, RISK_ZH, TEMPLATE_DIR, data_dir, now_iso, picks_zh, read_json)
+from ren9.lineup import describe as describe_absences
 from ren9.risk import FACTOR_ZH
 
 STRATEGY_ZH ={"conservative": "保守", "balanced": "均衡", "aggressive": "激进"}
@@ -440,12 +441,22 @@ def build_match(st: dict, seq: int) -> str:
     if adj.get("applied"):
         d, before = adj["delta"], adj["before"]
         form_lines.append(
-            f"- 概率修正：胜 {pct(before['win'], 1)} → {pct(pr['win'], 1)}，平 {pct(before['draw'], 1)} → "
-            f"{pct(pr['draw'], 1)}，负 {pct(before['loss'], 1)} → {pct(pr['loss'], 1)}"
+            f"- 概率修正：胜 {pct(before['win'], 1)} → {pct(before['win'] + d['win'], 1)}，平 {pct(before['draw'], 1)} → "
+            f"{pct(before['draw'] + d['draw'], 1)}，负 {pct(before['loss'], 1)} → {pct(before['loss'] + d['loss'], 1)}"
             f"（主胜 {d['win'] * 100:+.1f} 个百分点{'，已触及上限' if adj.get('capped') else ''}；系数来源：{adj['source']}）")
     elif adj:
         form_lines.append(f"- 概率未修正：{adj.get('reason')}（系数来源：{adj.get('source')}）")
     form_analysis_text = "\n".join(form_lines) if form_lines else "状态和战意分析数据不足"
+    # 主力缺阵对概率的修正（官方首发公布后才有）
+    lu_adj = p.get("lineup_adjustment") or {}
+    if lu_adj.get("applied"):
+        d = lu_adj["delta"]
+        absence_text = (f"缺阵指数 主 {lu_adj['home_absence']:.2f} / 客 {lu_adj['away_absence']:.2f}，"
+                        f"概率修正：胜 {d['win'] * 100:+.1f} / 平 {d['draw'] * 100:+.1f} / 负 {d['loss'] * 100:+.1f} 个百分点"
+                        f"{'（已触及上限）' if lu_adj.get('capped') else ''}。系数来源：{lu_adj['source']}。"
+                        "缺阵由官方首发对比近期首发推断，原因（伤病 / 停赛 / 轮换）未知。")
+    else:
+        absence_text = f"概率未按主力缺阵修正：{lu_adj.get('reason') or '未采集首发数据'}。"
     if t and t["resolution"]["status"] == "resolved":
         def row(label, fn):
             return [label, fn(t["teams"]["home"]), fn(t["teams"]["away"])]
@@ -471,7 +482,8 @@ def build_match(st: dict, seq: int) -> str:
             row("近 14 天比赛数", lambda x: g(x, "schedule", "matches_last_14d")),
             row("Elo", lambda x: g(x, "elo", "value")),
             row("官方首发", lambda x: "已公布 " + (x["lineup"].get("formation") or "") if x["lineup"]["official_lineup_published"] else "未公布"),
-            row("伤停", lambda x: "未知（无可靠来源）"),
+            row("主力缺阵（由首发推断）", lambda x: describe_absences(x["lineup"].get("absences"))),
+            row("伤停名单", lambda x: "未知（无可靠来源）"),
         ])
 
         if t.get("h2h") and t["h2h"]["meetings"]:
@@ -498,7 +510,7 @@ def build_match(st: dict, seq: int) -> str:
         "risk_level": f"{RISK_ZH.get(r.get('risk_level'), '—')}（评分 {r.get('risk_score')}）；" + "；".join(r.get("reasons", [])),
         "model_table": model_table, "model_details": "\n".join(det), "odds_table": odds_table,
         "odds_extra": "\n".join(extra), "team_table": team_table, "h2h": h2h,
-        "form_analysis": form_analysis_text, "risk_table": risk_table,
+        "form_analysis": form_analysis_text, "absence_analysis": absence_text, "risk_table": risk_table,
         "missing": "\n".join(f"- {x}" for x in (t or {}).get("missing", ["未采集球队数据"])),
         "sources": "\n".join(dict.fromkeys(srcs)),
     }
