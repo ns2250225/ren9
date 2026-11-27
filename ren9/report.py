@@ -201,20 +201,28 @@ def _tickets_md(plan: dict) -> str:
         return ""
     rows = [[f"票 {t['no']}", t["picks"], t["bet_count"], f"{t['cost']:.0f}", f"{t['hit_probability'] * 100:.3f}%"]
             for t in tickets]
+    head = ["票号", "9 场选择（场次:结果）", "注数", "金额(元)", "全中概率"]
+    alt = plan.get("compound_alternative")
+    if len(tickets) == 1 or not alt:
+        return "\n\n".join([
+            f"**购买清单（{len(tickets)} 张复式票，共 {plan['bet_count']} 注 {plan['total_cost']:.0f} 元）**",
+            table(head, rows, "llrrr")])
     rows.append(["合计", f"{len(tickets)} 张票", plan["bet_count"], f"{plan['total_cost']:.0f}",
                  f"{plan['hit_probability'] * 100:.3f}%"])
-    out = [f"**购买清单（{len(tickets)} 张复式票，共 {plan['bet_count']} 注 {plan['total_cost']:.0f} 元）**", "",
-           table(["票号", "9 场选择（场次:结果）", "注数", "金额(元)", "全中概率"], rows, "llrrr")]
-    alt = plan.get("compound_alternative")
-    if len(tickets) > 1:
-        out.append("> 每张票单独购买（都是普通复式票）。各票覆盖的组合互不重叠，任意一张 9 场全中即中奖，"
-                   "所以总全中概率是各票之和。上面\"推荐\"一列是各票在该场选过的全部结果，购买时以本清单为准。")
-    if alt:
-        gain = plan["hit_probability"] / alt["hit_probability"] - 1 if alt["hit_probability"] else 0
-        out.append(f"> 对照：只买一张复式（{alt['picks']}）为 {alt['bet_count']} 注 {alt['total_cost']:.0f} 元，"
-                   f"全中概率 {alt['hit_probability'] * 100:.3f}%；多票方案 {plan['bet_count']} 注，"
-                   f"全中概率相对提高 {gain:.0%}。")
-    return "\n\n".join(out)
+    gain = plan["hit_probability"] / alt["hit_probability"] - 1 if alt["hit_probability"] else 0
+    return "\n\n".join([
+        "**购买清单**（两种买法二选一，不要同时买）",
+        f"**方案 A：单张复式**（就是上表\"推荐\"一列）——{alt['bet_count']} 注 {alt['total_cost']:.0f} 元，"
+        f"全中概率 {alt['hit_probability'] * 100:.3f}%",
+        table(head, [["票 1", alt["picks"], alt["bet_count"], f"{alt['total_cost']:.0f}",
+                      f"{alt['hit_probability'] * 100:.3f}%"]], "llrrr"),
+        f"**方案 B：多票组合**（{len(tickets)} 张复式票，共 {plan['bet_count']} 注 {plan['total_cost']:.0f} 元）"
+        f"——全中概率 {plan['hit_probability'] * 100:.3f}%，比方案 A 相对提高 {gain:.0%}",
+        table(head, rows, "llrrr"),
+        "> 方案 B 把方案 A 里概率最低的组合（例如几个多选场同时打出次选）换成概率更高的组合，所以个别场次的选择"
+        "和方案 A 不同，见上表\"多票覆盖\"一列。每张票单独购买（都是普通复式票），各票覆盖的组合互不重叠，"
+        "任意一张 9 场全中即中奖，所以总全中概率是各票之和。本报告的方案统计与赛后复盘按方案 B 计算。",
+    ])
 
 
 def _plan_stats(plan: dict) -> str:
@@ -224,9 +232,11 @@ def _plan_stats(plan: dict) -> str:
     return "\n".join([
         "```text",
         f"选择场次：{len(plan['selections'])}场",
-        f"购买方式：{len(plan['tickets'])} 张复式票（多票组合）" if multi else "购买方式：1 张复式票",
-        *([] if multi else [f"单选：{plan['singles']}场", f"双选：{plan['doubles']}场", f"全选：{plan['triples']}场"]),
-        "",
+        f"单选：{plan['singles']}场",
+        f"双选：{plan['doubles']}场",
+        f"全选：{plan['triples']}场",
+        *(["（以上为方案 A 单张复式的配置）", "",
+           f"购买方式：方案 B 多票组合，{len(plan['tickets'])} 张复式票"] if multi else ["", "购买方式：1 张复式票"]),
         f"组合数量：{plan['bet_count']}注",
         f"每注金额：{plan['unit_price']}元",
         f"理论金额：{plan['total_cost']}元（预算上限 {plan['budget']} 元，{plan['budget_source']}）",
@@ -283,10 +293,15 @@ def build_daily(st: dict, strategy: str) -> tuple[str, dict]:
                          "数据质量", "状态优势", "战意(主/客)", "任九"], rows, "rllllrrrccrrccc")
 
     if plan and plan.get("status") == "ok":
+        multi = len(plan.get("tickets") or []) > 1
         selected_table = table(
-            ["场次", "对阵", "推荐", "类型", "覆盖概率", "风险"],
+            ["场次", "对阵", "推荐", "类型", "覆盖概率", "风险"] + (["多票覆盖"] if multi else []),
             [[s["seq"], s["match"], s["picks_zh"], s["type"], pct(s["coverage"], 1), RISK_ZH.get(s["risk_level"], "—")]
-             for s in plan["selections"]], "rllcrc")
+             + ([s.get("tickets_picks_zh") or s["picks_zh"]] if multi else [])
+             for s in plan["selections"]], "rllcrc" + ("c" if multi else ""))
+        if multi:
+            selected_table += ("\n\n> \"推荐 / 类型 / 覆盖概率\"是单张复式方案（方案 A）的选择；"
+                               "\"多票覆盖\"是多票方案（方案 B）各票在该场选到的全部结果，不能照这一列买成一张复式。")
         selected_table += "\n\n" + _tickets_md(plan)
         excluded_table = table(["场次", "对阵", "排除理由"],
                                [[e["seq"], e["match"], e["reason"]] for e in sel["excluded"]], "rll")
@@ -590,7 +605,7 @@ def build_review(review: dict, agg: dict | None = None) -> str:
         out.append(f"- 9 场命中 {pl['hits']}/{pl['total']}；单选命中 {pl['single_hits']}/{pl['single_total']}；"
                    f"双选/全选覆盖 {pl['multi_covered']}/{pl['multi_total']}；"
                    f"9 场全中：{'是' if pl['all_nine_hit'] else '否'}"
-                   + (f"（共 {len(pl['tickets'])} 张票，命中最多的一张 {pl['best_ticket_hits']}/9；上表为各票选择的合并）"
+                   + (f"（共 {len(pl['tickets'])} 张票，命中最多的一张 {pl['best_ticket_hits']}/9；上表为单张复式方案的选择，是否全中按各票判定）"
                       if len(pl.get("tickets") or []) > 1 else "") + "\n"
                    f"- 成本 {pl['cost']} 元（{pl['bet_count']} 注）；{roi}")
     if not review.get("plans"):

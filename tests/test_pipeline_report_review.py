@@ -96,6 +96,30 @@ def test_pipeline_end_to_end_and_report(fake_http, zc_text, jc_text, odds_only_o
     assert {p["strategy"] for p in store.latest_plans("ren9", "26169")} == {"conservative", "balanced", "aggressive"}
 
 
+def test_report_table_matches_single_compound_and_stale_plans_are_rebuilt(fake_http, zc_text, jc_text, odds_only_ok):
+    fake_http({"getFootBallMatchV1": _with_full_odds(zc_text), "getMatchCalculatorV1": jc_text})
+    pipeline.run(pipeline.Ctx(date="today", period="26169"), "report")
+    # 模拟旧版本保存的方案：没有指纹，逐场推荐是各票选择的合并
+    old = store.load_stage("ren9", "26169", "plans")
+    old.pop("fingerprint")
+    for s in old["strategies"]["balanced"]["selections"]:
+        s["picks"], s["picks_zh"], s["type"] = ["win", "draw", "loss"], "胜平负", "全选"
+    store.save_stage("ren9", "26169", "plans", old)
+    st = pipeline.run(pipeline.Ctx(date="today", period="26169"), "report")
+    plan = st["plans"]["strategies"]["balanced"]
+    assert st["plans"]["fingerprint"] == optimizer.fingerprint()
+    assert plan["mode"] == "tickets"
+    # 表格里的推荐就是单张复式方案：注数、选择都与"方案 A"一致
+    table_picks = " / ".join(f"{s['seq']}:{s['picks_zh']}" for s in plan["selections"])
+    assert table_picks == plan["compound_alternative"]["picks"]
+    assert optimizer.bet_count([s["picks"] for s in plan["selections"]]) == plan["compound_alternative"]["bet_count"]
+    md = Path(st["report"]["markdown_path"]).read_text(encoding="utf-8")
+    assert "方案 A：单张复式" in md and "方案 B：多票组合" in md and "多票覆盖" in md
+    assert f"| 票 1 | {table_picks} |" in md
+    for s in plan["selections"]:
+        assert f"| {s['picks_zh']} | {s['type']} |" in md
+
+
 def test_stage_reuse_and_partial_reanalysis(fake_http, zc_text, jc_text, odds_only_ok):
     fake_http({"getFootBallMatchV1": _with_full_odds(zc_text), "getMatchCalculatorV1": jc_text})
     pipeline.run(pipeline.Ctx(date="today", period="26169"), "probabilities")

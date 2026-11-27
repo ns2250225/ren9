@@ -107,7 +107,8 @@ def run(ctx: Ctx, upto: str = "report") -> dict:
                 sel = ctx.stages["selection"]["strategies"][s]
                 out[s] = optimizer.build_plan(sel, ctx.stages["probabilities"], ctx.stages["risk"],
                                               ctx.stages["odds"], s, ctx.budget)
-            return {"period": period, "generated_at": now_iso(), "strategies": out}
+            return {"period": period, "generated_at": now_iso(), "strategies": out,
+                    "fingerprint": optimizer.fingerprint()}
 
         if target >= ORDER.index("selection"):
             saved = store.load_stage(gt, period, "selection")
@@ -120,6 +121,8 @@ def run(ctx: Ctx, upto: str = "report") -> dict:
                 dirty = True
         if target >= ORDER.index("plans"):
             saved = store.load_stage(gt, period, "plans")
+            if saved and saved.get("fingerprint") != optimizer.fingerprint():
+                saved = None                   # 优化逻辑或策略预设已变化：旧方案全部作废，不与新方案混用
             have = (saved and not dirty and ctx.budget is None
                     and all(s in saved.get("strategies", {}) for s in ctx.strategies))
             if have and target != ORDER.index("plans"):

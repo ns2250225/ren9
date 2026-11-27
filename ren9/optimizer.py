@@ -20,6 +20,19 @@ from ren9 import portfolio
 from ren9.common import OUTCOMES, OUTCOME_ZH, now_iso, picks_zh, settings
 
 
+VERSION = 3          # 方案结构或优化逻辑变化时加 1，已保存的方案会自动重算
+
+
+def fingerprint() -> str:
+    """方案指纹：优化逻辑版本 + 策略预设。任一变化后，缓存里已保存的方案需要重算。"""
+    import hashlib
+    import json
+
+    cfg = settings()
+    blob = json.dumps([VERSION, cfg.get("strategy", {}).get("presets"), cfg["lottery"]], sort_keys=True, default=str)
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:12]
+
+
 def bet_count(selections: list[list[str]]) -> int:
     """复式注数 = 各场选择数的乘积。"""
     n = 1
@@ -132,11 +145,16 @@ def optimize(matches: list[dict], strategy: str = "balanced", budget: float | No
             hit = pf["hit_probability"]
             mode = "tickets"
 
-    # 逐场汇总：各票在该场选过的全部结果（单张复式时就是该票的选择）
+    # 逐场推荐 = 单张复式方案的选择（类型、覆盖概率、单选/双选/全选场数都按它计算，
+    # 与 compound_alternative 一致）。多票方案在该场覆盖到的全部结果另存在 tickets_picks，
+    # 它可能比单张复式多出个别结果（副票换成的次选），不能当成一张复式票去买。
     selections = []
-    for idx, m in enumerate(matches):
+    for idx, (m, picks) in enumerate(zip(matches, compound_picks)):
+        s = _selection(m, picks)
         union = {o for t in tickets for o in t["selections"][idx]["picks"]}
-        selections.append(_selection(m, [o for o in OUTCOMES if o in union]))
+        s["tickets_picks"] = [o for o in OUTCOMES if o in union]
+        s["tickets_picks_zh"] = picks_zh(s["tickets_picks"])
+        selections.append(s)
     bets = sum(t["bet_count"] for t in tickets)
     singles_hit = 1.0
     for m in matches:
