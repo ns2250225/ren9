@@ -129,7 +129,8 @@ def _nine():
 
 @pytest.mark.parametrize("strategy", ["conservative", "balanced", "aggressive"])
 def test_plan_respects_budget_and_limits(strategy):
-    plan = optimizer.optimize(_nine(), strategy)
+    plan = optimizer.optimize(_nine(), strategy, max_tickets=1)          # 单张复式
+    assert plan["mode"] == "compound" and len(plan["tickets"]) == 1
     assert len(plan["selections"]) == 9
     counts = [len(s["picks"]) for s in plan["selections"]]
     product = 1
@@ -161,7 +162,7 @@ def test_optimizer_is_exactly_optimal_under_its_objective():
     import math
 
     matches = _nine()
-    plan = optimizer.optimize(matches, "balanced", budget=64)
+    plan = optimizer.optimize(matches, "balanced", budget=64, max_tickets=1)
     lam = plan["params"]["cost_aversion"]
     best = -1e9
     sorted_p = [sorted(m["probabilities"].values(), reverse=True) for m in matches]
@@ -193,3 +194,60 @@ def test_build_plan_structure(analysis):
     assert len(plan["selected_matches"]) == 9 and len(plan["excluded_matches"]) == 5
     bad = optimizer.build_plan({"status": "insufficient", "message": "x"}, preds, rk, None, "balanced")
     assert bad["status"] == "insufficient" and bad["bet_count"] == 0 and bad["selections"] == []
+
+
+# ---------- 多票组合 ----------
+
+def _covered(plan):
+    """方案覆盖的全部 9 场结果组合（逐票展开）。"""
+    combos = []
+    for t in plan["tickets"]:
+        combos += list(itertools.product(*[s["picks"] for s in t["selections"]]))
+    return combos
+
+
+@pytest.mark.parametrize("strategy", ["conservative", "balanced", "aggressive"])
+def test_multi_ticket_plan_is_disjoint_within_budget_and_beats_single_compound(strategy):
+    import math
+
+    matches = _nine()
+    plan = optimizer.optimize(matches, strategy)
+    single = optimizer.optimize(matches, strategy, max_tickets=1)
+    assert plan["mode"] == "tickets" and 1 < len(plan["tickets"]) <= plan["params"]["max_tickets"]
+    combos = _covered(plan)
+    assert len(combos) == len(set(combos)) == plan["bet_count"] <= plan["max_bets"]     # 各票互不重叠
+    assert plan["bet_count"] == sum(t["bet_count"] for t in plan["tickets"])
+    assert plan["total_cost"] == plan["bet_count"] * plan["unit_price"] == sum(t["cost"] for t in plan["tickets"])
+    prob = sum(math.prod(m["probabilities"][o] for m, o in zip(matches, c)) for c in combos)
+    assert plan["hit_probability"] == pytest.approx(prob, abs=1e-5)
+    assert plan["hit_probability"] > single["hit_probability"]
+    assert plan["compound_alternative"]["hit_probability"] == single["hit_probability"]
+    # 逐场汇总 = 各票在该场选择的并集
+    for i, s in enumerate(plan["selections"]):
+        assert set(s["picks"]) == {o for t in plan["tickets"] for o in t["selections"][i]["picks"]}
+    assert "票1" in optimizer.describe(plan) and "｜" in optimizer.describe(plan)
+
+
+def test_portfolio_never_beats_the_best_possible_single_tickets():
+    """多票方案的覆盖概率不可能超过"概率最高的 N 个单式组合"之和；一张票时等于最优复式。"""
+    import math
+
+    from ren9 import portfolio
+
+    probs = [m["probabilities"] for m in _nine()][:5]
+    allc = sorted((math.prod(p[o] for p, o in zip(probs, c))
+                   for c in itertools.product(("win", "draw", "loss"), repeat=5)), reverse=True)
+    prev = 0.0
+    for tickets in (1, 2, 4, 12):
+        r = portfolio.optimize(probs, 12, tickets)
+        assert r["bets"] <= 12 and len(r["tickets"]) <= tickets
+        assert prev - 1e-12 <= r["hit_probability"] <= sum(allc[:12]) + 1e-9      # 票数越多不会越差
+        prev = r["hit_probability"]
+    assert prev == pytest.approx(sum(allc[:12]), abs=1e-9)                       # 票数够多时达到理论上限
+    # 成本厌恶：覆盖率提升不够时少用注数
+    assert portfolio.optimize(probs, 12, 4, cost_aversion=5.0)["bets"] == 1
+
+
+def test_balanced_preset_is_tighter_than_before():
+    ps = optimizer.preset("balanced")
+    assert ps["max_bets"] == 24 and ps["cost_aversion"] == 0.25 and ps["max_tickets"] == 4

@@ -3,6 +3,8 @@
 
 运行时数据（data/）、缓存、虚拟环境、备份/临时文件等不进包；data/ 会在首次运行时自动创建。
 打包前会检查 REQUIRED 里的核心文件是否齐全，缺任何一个都直接报错，不生成残缺的包。
+回测学习到的参数（config/model_weights.learned.yaml）存在时会随包发布，安装后不用重新回测；
+不存在时只给出提示——那样安装后用的是初始权重，需要先运行 scripts/backtest.py。
 
 示例：
     python package.py                    # 生成 dist/ren9-analyst.zip（SKILL.md 位于压缩包根部）
@@ -27,12 +29,17 @@ REQUIRED = (
     "SKILL.md", "README.md", "LICENSE", "requirements.txt", "install.py", "mcp_server.py",
     "config/settings.yaml", "config/model_weights.yaml", "config/data_sources.yaml", "config/team_aliases.yaml",
     "templates/daily_report.md", "templates/match_report.md",
+    "ren9/common.py", "ren9/store.py", "ren9/teams.py", "ren9/history.py",
     "ren9/pipeline.py", "ren9/schedule.py", "ren9/teamdata.py", "ren9/odds.py", "ren9/form.py", "ren9/lineup.py",
-    "ren9/predict.py", "ren9/risk.py", "ren9/selector.py", "ren9/optimizer.py", "ren9/report.py",
-    "ren9/backtest.py", "ren9/review.py",
-    "providers/espn.py", "providers/sporttery.py", "providers/football_data.py",
-    "models/elo.py", "models/poisson.py", "models/dixon_coles.py", "models/ensemble.py",
+    "ren9/predict.py", "ren9/risk.py", "ren9/selector.py", "ren9/optimizer.py", "ren9/portfolio.py",
+    "ren9/report.py", "ren9/backtest.py", "ren9/review.py",
+    "providers/base.py", "providers/espn.py", "providers/sporttery.py", "providers/football_data.py",
+    "providers/c500.py",
+    "models/elo.py", "models/poisson.py", "models/dixon_coles.py", "models/ensemble.py", "models/metrics.py",
+    "scripts/generate_report.py", "scripts/review_results.py", "scripts/backtest.py", "scripts/check_sources.py",
+    "skills/ren9-optimizer.md", "skills/football-odds.md", "skills/football-prediction.md",
 )
+LEARNED = "config/model_weights.learned.yaml"      # 回测学习到的集成参数：有则随包发布
 MAX_DEPTH = 1          # 相对路径里最多一个 "/"：根目录/二级目录/文件
 
 
@@ -69,6 +76,10 @@ def main() -> None:
     files = collect()
     dirs = sorted({f.split("/")[0] for f in files if "/" in f})
     print(f"{len(files)} 个文件，二级目录：{', '.join(dirs)}")
+    if LEARNED in files:
+        print(f"包含回测学习到的集成参数：{LEARNED}")
+    else:
+        print(f"提示：没有 {LEARNED}，安装后将使用初始权重；建议先运行 python scripts/backtest.py 再打包")
     if args.check:
         print("\n".join(files))
         return

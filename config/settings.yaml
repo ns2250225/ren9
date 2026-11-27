@@ -12,7 +12,9 @@ lottery:
 strategy:
   default: balanced
   # max_bets: 每套方案允许的最大注数（预算 = max_bets × unit_price，可用 --budget 覆盖）
-  # max_doubles / max_triples: 双选、全选场次上限
+  # max_doubles / max_triples: 单张复式票的双选、全选场次上限
+  # max_tickets: 最多拆成几张互不重叠的复式票（1 = 只出一张复式）。同样的注数，多票组合去掉单张复式里
+  #   概率极低的组合（如所有双选场同时打出次选），全中概率更高；多票方案不受双选/全选场次上限约束
   # score_weights: 14 选 9 的 MatchScore 权重（概率优势/模型一致/数据质量/风险惩罚）
   # cost_aversion: 成本厌恶系数 λ。把某场从单选升为双选，只有覆盖率提升倍数 > 2^λ 才值得
   # cold_alpha: 冷门偏好 α。选项价值 = 模型概率 × 市场概率^(-α)；0 = 只看命中概率
@@ -21,20 +23,23 @@ strategy:
       max_bets: 8
       max_doubles: 3
       max_triples: 0
+      max_tickets: 3
       cost_aversion: 0.30
       cold_alpha: 0.0
       score_weights: {probability: 0.35, agreement: 0.20, data_quality: 0.15, risk: 0.30}
     balanced:
-      max_bets: 32
-      max_doubles: 5
+      max_bets: 24
+      max_doubles: 4
       max_triples: 1
-      cost_aversion: 0.15
+      max_tickets: 4
+      cost_aversion: 0.25
       cold_alpha: 0.0
       score_weights: {probability: 0.40, agreement: 0.20, data_quality: 0.15, risk: 0.25}
     aggressive:
       max_bets: 128
       max_doubles: 7
       max_triples: 3
+      max_tickets: 6
       cost_aversion: 0.05
       cold_alpha: 0.35
       score_weights: {probability: 0.50, agreement: 0.15, data_quality: 0.15, risk: 0.20}

@@ -25,7 +25,7 @@ def probe(name: str, fn) -> dict:
 
 
 def body():
-    from providers import clubelo, espn, football_data, sporttery, understat
+    from providers import c500, clubelo, espn, football_data, sporttery, understat
 
     today = now().date()
 
@@ -40,6 +40,11 @@ def body():
     def jc():
         m = sporttery.fetch_jczq_matches(refresh=True)
         return f"{len(m)} 场在售比赛"
+
+    def c5():
+        period = sporttery.fetch_ren9_schedule(None)["period"]
+        rows, _ = c500.fetch_ren9_odds(period, refresh=True)
+        return f"第 {period} 期 {len(rows)} 场有平均欧赔"
 
     def es():
         ev, _ = espn.scoreboard("eng.1", today.strftime("%Y%m"), refresh=True)
@@ -62,6 +67,7 @@ def body():
         probe("sporttery_zc（体彩网传统足彩赛单）", zc),
         probe("sporttery_zc（体彩网开奖与奖金）", zc_draw),
         probe("sporttery_jc（竞彩足球赔率）", jc),
+        probe("c500（500 彩票网任九平均欧赔）", c5),
         probe("espn（赛程/比分/积分榜）", es),
         probe("football_data（历史赛果/xG/赔率）", fd),
         probe("clubelo（Elo 评级）", ce),
@@ -69,7 +75,8 @@ def body():
     ]
     out = {"checked_at": now_iso(), "results": results,
            "available": sum(r["available"] for r in results), "total": len(results),
-           "fallbacks": {"clubelo": "不可用时用历史赛果自算 Elo（仅同赛事内可比）",
+           "fallbacks": {"c500": "不可用时只用竞彩官方与 ESPN 的赔率（部分次级联赛比赛会没有赔率）",
+                         "clubelo": "不可用时用历史赛果自算 Elo（仅同赛事内可比）",
                          "understat": "不可用时使用 football-data.co.uk 的 HxG/AxG 列"}}
     write_json(data_dir() / "cache" / "source_status.json", out)
     return out

@@ -1,8 +1,8 @@
 """时间切分回测（walk-forward）。
 
 对每个联赛按周滚动：只用该周之前的比赛拟合模型，预测该周比赛；市场概率只用赛前赔率
-（非收盘赔率）。全部预测按时间排序后，前 60% 用于拟合集成权重与校准温度，后 40% 作为
-留出集评估。任何时候训练数据都严格早于被预测的比赛，避免数据泄漏。
+（非收盘赔率）。全部预测按时间排序后，前 60% 用于拟合集成参数（对数线性池化的指数与偏置，
+有赔率 / 无赔率各一套），后 40% 作为留出集评估。任何时候训练数据都严格早于被预测的比赛，避免数据泄漏。
 """
 from __future__ import annotations
 
@@ -178,9 +178,13 @@ def fit_selector_weights(samples: list[tuple[float, float, float, int]]) -> dict
 
 
 def simulate_ren9(records: list[dict], final_probs: list[dict], sel_weights: dict) -> dict:
-    """把留出集按时间每 14 场组成一组，模拟 14 选 9 + 组合优化的命中情况。"""
+    """把留出集按时间每 14 场组成一组，模拟 14 选 9 + 组合优化的命中情况。
+
+    每个策略同时统计正式方案（可能是多票组合）与"同样预算只买一张复式"的命中次数，便于对照。
+    """
     coupons = len(records) // 14
-    res = {s: {"hits": 0, "bets": 0} for s in ("conservative", "balanced", "aggressive")}
+    res = {s: {"hits": 0, "bets": 0, "tickets": 0, "est": 0.0, "compound_hits": 0, "compound_bets": 0}
+           for s in ("conservative", "balanced", "aggressive")}
     for c in range(coupons):
         chunk = list(range(c * 14, c * 14 + 14))
         scored = []
@@ -197,18 +201,34 @@ def simulate_ren9(records: list[dict], final_probs: list[dict], sel_weights: dic
                    for k, idx in enumerate(chosen)]
         for s in res:
             plan = optimizer.optimize(matches, s)
-            hit = all(records[idx]["outcome"] in sel["picks"] for idx, sel in zip(chosen, plan["selections"]))
+            hit = any(all(records[idx]["outcome"] in sel["picks"] for idx, sel in zip(chosen, t["selections"]))
+                      for t in plan["tickets"])
             res[s]["hits"] += 1 if hit else 0
             res[s]["bets"] += plan["bet_count"]
+            res[s]["tickets"] += len(plan["tickets"])
+            res[s]["est"] += plan["hit_probability"]
+            single = plan if plan["mode"] == "compound" else optimizer.optimize(matches, s, max_tickets=1)
+            res[s]["compound_hits"] += all(records[idx]["outcome"] in sel["picks"]
+                                           for idx, sel in zip(chosen, single["selections"]))
+            res[s]["compound_bets"] += single["bet_count"]
+    n = coupons or 1
     return {"coupons": coupons,
-            "strategies": {s: {"hits": v["hits"], "avg_bets": v["bets"] / coupons if coupons else 0}
+            "strategies": {s: {"hits": v["hits"], "hit_rate": round(v["hits"] / n, 4),
+                               "estimated_hit_rate": round(v["est"] / n, 4),
+                               "avg_bets": v["bets"] / n, "avg_tickets": round(v["tickets"] / n, 2),
+                               "compound_hits": v["compound_hits"],
+                               "compound_hit_rate": round(v["compound_hits"] / n, 4),
+                               "compound_avg_bets": v["compound_bets"] / n}
                            for s, v in res.items()}}
 
 
-def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int = 3, step_days: int = 7,
+DEFAULT_LEAGUES = ("E0", "E1", "E2", "D1", "D2", "I1", "I2", "SP1", "SP2", "F1", "F2", "N1", "P1", "B1", "T1", "SC0")
+
+
+def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int = 6, step_days: int = 7,
         apply: bool = True) -> dict:
     ref = ref or date.today()
-    leagues = leagues or ["E0", "E1", "D1", "I1", "SP1", "F1"]
+    leagues = leagues or list(DEFAULT_LEAGUES)
     records: list[dict] = []
     used = []
     for code in leagues:
@@ -233,32 +253,40 @@ def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int 
     fit_part, hold = records[:cut], records[cut:]
     mw = load_yaml("model_weights.yaml")
     initial = mw["ensemble"]["initial"]
-    cap = {"market": mw["ensemble"].get("max_market_weight", 0.6)}
-    floor = mw["ensemble"].get("min_model_weight", 0.05)
-    fit = ensemble.fit_weights([(r["probs"], r["outcome"]) for r in fit_part], list(MODELS), cap, floor)
-    if fit:
-        fit["constraints"] = {"max_market_weight": cap["market"], "min_model_weight": floor}
     nu = elo_model.fit_draw_nu([(r["elo"][0], r["elo"][1], r["outcome"]) for r in fit_part],
                                mw["elo"].get("home_advantage", 65))
+    # 对数线性池化：有市场概率的比赛用全部模型拟合；没有赔率的比赛只能靠历史类模型，单独拟合一套
+    samples = [(r["probs"], r["outcome"]) for r in fit_part]
+    others = [m for m in MODELS if m != "market"]
+    fit = ensemble.fit_log_pool(samples, list(MODELS))
+    fit_no_mkt = ensemble.fit_log_pool(samples, others)
+    if fit and fit_no_mkt:
+        fit["no_market"] = {k: fit_no_mkt[k] for k in ("weights", "bias", "log_loss")}
 
-    def ens(r, weights, temp):
-        return ensemble.combine(r["probs"], weights, temp)["probabilities"]
+    def pool_probs(r, cfg):
+        return ensemble.pool(r["probs"], cfg)["probabilities"] if cfg else None
 
-    hold_final = [ens(r, fit["weights"], fit["temperature"]) for r in hold] if fit else None
+    hold_final = [pool_probs(r, fit) for r in hold] if fit else None
     holdout = {m: metrics.summarize([(r["probs"][m], r["outcome"]) for r in hold]) for m in MODELS}
-    holdout["ensemble_initial"] = metrics.summarize([(ens(r, initial, 1.0), r["outcome"]) for r in hold])
-    if fit:
-        pairs = list(zip(hold_final, (r["outcome"] for r in hold)))
+    init_cfg = {"method": "linear", "weights": initial, "temperature": 1.0}
+    holdout["ensemble_initial"] = metrics.summarize([(pool_probs(r, init_cfg), r["outcome"]) for r in hold])
+    if fit and fit.get("no_market"):
+        nm_cfg = {"method": "log_linear", **fit["no_market"]}
+        holdout["ensemble_no_market"] = metrics.summarize(
+            [(ensemble.pool({m: r["probs"][m] for m in others}, nm_cfg)["probabilities"], r["outcome"]) for r in hold])
+    if fit and hold_final:
+        pairs = [(p, r["outcome"]) for p, r in zip(hold_final, hold) if p]
         holdout["ensemble"] = metrics.summarize(pairs)
     else:
-        pairs = [(ens(r, initial, 1.0), r["outcome"]) for r in hold]
+        pairs = [(pool_probs(r, init_cfg), r["outcome"]) for r in hold]
         holdout["ensemble"] = holdout["ensemble_initial"]
 
     # 状态 / 战意修正系数：在拟合集上学习，在留出集上对比修正前后的 Log Loss
     def base(r):
-        return ens(r, fit["weights"], fit["temperature"]) if fit else ens(r, initial, 1.0)
+        return pool_probs(r, fit) if fit else pool_probs(r, init_cfg)
 
-    form_fit = fit_form_adjust([(base(r), r.get("form_diff"), r.get("motivation_gap"), r["outcome"]) for r in fit_part])
+    form_fit = fit_form_adjust([(base(r), r.get("form_diff"), r.get("motivation_gap"), r["outcome"])
+                                for r in fit_part if base(r)])
     if form_fit:
         cfg = {"enabled": True, "form_coef": form_fit["form_coef"], "motivation_coef": form_fit["motivation_coef"],
                "max_shift": (mw.get("form_adjust") or {}).get("max_shift", 0.04), "source": "backtest"}
@@ -274,10 +302,11 @@ def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int 
 
     sel_samples = []
     for r in fit_part:
-        p = ens(r, fit["weights"], fit["temperature"]) if fit else ens(r, initial, 1.0)
-        agr = ensemble.agreement(r["probs"])
-        sel_samples.append((probability_score(p), 0.5 if agr is None else agr, closeness(p),
-                            1 if metrics.top_pick(p) == r["outcome"] else 0))
+        p = base(r)
+        if p:
+            agr = ensemble.agreement(r["probs"])
+            sel_samples.append((probability_score(p), 0.5 if agr is None else agr, closeness(p),
+                                1 if metrics.top_pick(p) == r["outcome"] else 0))
     sel_fit = fit_selector_weights(sel_samples)
     sel_w = (sel_fit or {}).get("weights") or mw["selector"]["initial"]
     summary = {
@@ -285,7 +314,7 @@ def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int 
         "fit_samples": len(fit_part), "holdout_samples": len(hold),
         "test_range": [records[0]["date"], records[-1]["date"]],
         "holdout_range": [hold[0]["date"], hold[-1]["date"]],
-        "split": "按时间排序，前 60% 拟合集成权重与校准温度，后 40% 留出评估",
+        "split": "按时间排序，前 60% 拟合集成参数（对数线性池化），后 40% 留出评估",
         "learned": fit, "elo_draw_nu": nu, "selector_learned": sel_fit, "form_adjust_learned": form_fit,
         "holdout": holdout,
         "calibration": metrics.calibration_bins(pairs),
@@ -296,7 +325,7 @@ def run(leagues: list[str] | None = None, ref: date | None = None, seasons: int 
             "模型只用被预测比赛所在周之前的比赛拟合",
             "市场概率使用赛前赔率（非收盘赔率）",
             "Elo 在每周比赛全部预测完之后才更新",
-            "集成权重/温度在时间更早的 60% 上拟合，在更晚的 40% 上评估",
+            "集成参数在时间更早的 60% 上拟合，在更晚的 40% 上评估",
         ],
     }
     # 只有学习到的集成在留出集上不差于初始权重时才写回配置

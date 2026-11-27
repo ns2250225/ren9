@@ -33,6 +33,21 @@ def _evaluate_plan(plan: dict, outcomes: dict[int, str | None], void: set[int], 
         all_hit = all_hit and hit
         sel_out.append({"seq": seq, "match": s.get("match"), "picks": s["picks_zh"], "type": s["type"],
                         "actual": "*" if actual == "*" else OUTCOME_ZH.get(actual, "?"), "hit": hit})
+    # 逐票判定：任意一张票 9 场全中即中奖。无效场次任意选项都算中，该票在这些场次上的每个选项各成一注。
+    win_tickets, ticket_rows = 0, []
+    for t in plan.get("tickets") or [{"no": 1, "selections": plan.get("selections", [])}]:
+        won, n_win = len(t["selections"]) == 9, 1
+        for s in t["selections"]:
+            if s["seq"] in void:
+                n_win *= len(s["picks"])
+            elif outcomes.get(s["seq"]) not in s["picks"]:
+                won = False
+        hits = sum(1 for s in t["selections"] if s["seq"] in void or outcomes.get(s["seq"]) in s["picks"])
+        ticket_rows.append({"no": t.get("no", 1), "bet_count": t.get("bet_count"), "picks": t.get("picks"),
+                            "hits": hits, "total": len(t["selections"]), "won": won})
+        win_tickets += n_win if won else 0
+    all_hit = win_tickets > 0
+    tickets = win_tickets
     cost = plan.get("total_cost", 0)
     out = {
         "strategy": plan["strategy"], "bet_count": plan.get("bet_count"), "cost": cost,
@@ -42,12 +57,14 @@ def _evaluate_plan(plan: dict, outcomes: dict[int, str | None], void: set[int], 
         "multi_covered": sum(1 for s in sel_out if s["type"] != "单选" and s["hit"]),
         "multi_total": sum(1 for s in sel_out if s["type"] != "单选"),
         "all_nine_hit": all_hit and len(sel_out) == 9,
+        "mode": plan.get("mode", "compound"), "tickets": ticket_rows,
+        "best_ticket_hits": max((t["hits"] for t in ticket_rows), default=0),
         "predicted_hit_probability": plan.get("hit_probability"),
     }
     # ROI 只用官方公布的真实奖金与真实投注成本计算
     if prize and prize.get("amount") is not None:
         amount = prize["amount"]
-        win_tickets = tickets if out["all_nine_hit"] else 0
+        win_tickets = tickets if out["all_nine_hit"] else 0      # 已按票逐张统计
         gross = win_tickets * amount
         net_per = amount * (1 - TAX_RATE) if amount > TAX_THRESHOLD else amount
         out.update(

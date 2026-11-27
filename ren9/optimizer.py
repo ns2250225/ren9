@@ -6,12 +6,17 @@
 α = 0 时 f 就是该场的覆盖概率，目标即 9 场全中的概率；α > 0 时偏向市场低估的结果（冷门价值）。
 λ 为成本厌恶：只有覆盖率提升超过 2^λ 倍才值得把单选升为双选。
 9 场 × 3 种选择数共 3^9 = 19683 种配置，直接穷举求精确最优。
+
+多票组合（策略预设 max_tickets > 1 时启用）：同样的预算拆成几张互不重叠的复式票（见 portfolio.py），
+去掉单张复式里概率极低的组合，换成概率更高的组合。多票方案的全中概率更高时采用多票方案，
+并保留单张复式的结果（compound_alternative）供对照。
 """
 from __future__ import annotations
 
 import itertools
 import math
 
+from ren9 import portfolio
 from ren9.common import OUTCOMES, OUTCOME_ZH, now_iso, picks_zh, settings
 
 
@@ -55,8 +60,33 @@ def _options(p: dict, q: dict | None, alpha: float) -> list[tuple[list[str], flo
     return out
 
 
-def optimize(matches: list[dict], strategy: str = "balanced", budget: float | None = None) -> dict:
-    """matches: 选中的 9 场，每项含 seq / home_team / away_team / probabilities / market(可无) / risk_level。"""
+def _selection(m: dict, picks: list[str]) -> dict:
+    top = max(OUTCOMES, key=lambda x: m["probabilities"][x])
+    return {
+        "seq": m["seq"], "match_id": m.get("match_id"),
+        "match": f"{m['home_team']} vs {m['away_team']}",
+        "picks": picks, "picks_zh": picks_zh(picks),
+        "type": ("单选", "双选", "全选")[len(picks) - 1],
+        "coverage": round(sum(m["probabilities"][o] for o in picks), 4),
+        "includes_cold": any(p != top and m["probabilities"][p] < 0.30 for p in picks) and len(picks) < 3,
+        "risk_level": m.get("risk_level"),
+    }
+
+
+def _ticket(no: int, matches: list[dict], picks: list[list[str]], unit: float, prob: float) -> dict:
+    bets = bet_count(picks)
+    return {"no": no, "bet_count": bets, "cost": bets * unit, "hit_probability": round(prob, 6),
+            "picks": " / ".join(f"{m['seq']}:{picks_zh(pk)}" for m, pk in zip(matches, picks)),
+            "selections": [{"seq": m["seq"], "picks": pk, "picks_zh": picks_zh(pk),
+                            "type": ("单选", "双选", "全选")[len(pk) - 1]} for m, pk in zip(matches, picks)]}
+
+
+def optimize(matches: list[dict], strategy: str = "balanced", budget: float | None = None,
+             max_tickets: int | None = None) -> dict:
+    """matches: 选中的 9 场，每项含 seq / home_team / away_team / probabilities / market(可无) / risk_level。
+
+    max_tickets: 最多拆成几张复式票（缺省用策略预设；1 = 只出一张复式）。
+    """
     ps = preset(strategy, budget)
     max_bets, max_d, max_t = ps["max_bets"], ps.get("max_doubles", 9), ps.get("max_triples", 9)
     lam, alpha = ps.get("cost_aversion", 0.0), ps.get("cold_alpha", 0.0)
@@ -77,30 +107,47 @@ def optimize(matches: list[dict], strategy: str = "balanced", budget: float | No
     if best is None:
         raise ValueError("预算不足以生成任何方案")
 
-    selections, hit = [], 1.0
-    for m, o, k in zip(matches, opts, best):
+    compound_picks, hit = [], 1.0
+    for o, k in zip(opts, best):
         picks, _, cover = o[k]
+        compound_picks.append(picks)
         hit *= cover
-        top = max(OUTCOMES, key=lambda x: m["probabilities"][x])
-        selections.append(
-            {
-                "seq": m["seq"], "match_id": m.get("match_id"),
-                "match": f"{m['home_team']} vs {m['away_team']}",
-                "picks": picks, "picks_zh": picks_zh(picks),
-                "type": ("单选", "双选", "全选")[k],
-                "coverage": round(cover, 4),
-                "includes_cold": any(p != top and m["probabilities"][p] < 0.30 for p in picks) and k < 2,
-                "risk_level": m.get("risk_level"),
-            }
-        )
-    bets = bet_count([s["picks"] for s in selections])
+    unit = ps["unit_price"]
+    tickets = [_ticket(1, matches, compound_picks, unit, hit)]
+    compound = {"bet_count": tickets[0]["bet_count"], "total_cost": tickets[0]["cost"],
+                "hit_probability": round(hit, 6), "picks": tickets[0]["picks"]}
+    mode = "compound"
+
+    # 多票组合：同样的预算拆成几张互不重叠的复式票
+    max_tk = int(ps.get("max_tickets", 1) if max_tickets is None else max_tickets)
+    if max_tk > 1 and max_bets > 1:
+        values = None
+        if alpha > 0:
+            values = [{o: m["probabilities"][o] * max((m.get("market") or m["probabilities"])[o], 1e-6) ** (-alpha)
+                       for o in OUTCOMES} for m in matches]
+        pf = portfolio.optimize([m["probabilities"] for m in matches], max_bets, max_tk, values, lam)
+        if len(pf["tickets"]) > 1 and pf["hit_probability"] > hit + 1e-9:
+            tickets = [_ticket(i + 1, matches, t["picks"], unit, t["probability"])
+                       for i, t in enumerate(pf["tickets"])]
+            hit = pf["hit_probability"]
+            mode = "tickets"
+
+    # 逐场汇总：各票在该场选过的全部结果（单张复式时就是该票的选择）
+    selections = []
+    for idx, m in enumerate(matches):
+        union = {o for t in tickets for o in t["selections"][idx]["picks"]}
+        selections.append(_selection(m, [o for o in OUTCOMES if o in union]))
+    bets = sum(t["bet_count"] for t in tickets)
     singles_hit = 1.0
     for m in matches:
         singles_hit *= max(m["probabilities"].values())
-    unit = ps["unit_price"]
     return {
         "strategy": strategy,
         "generated_at": now_iso(),
+        "mode": mode,                      # compound = 一张复式票；tickets = 多张互不重叠的复式票
+        "tickets": tickets,
+        "ticket_count": len(tickets),
+        "compound_alternative": compound if mode == "tickets" else None,
         "selections": selections,
         "singles": sum(1 for s in selections if s["type"] == "单选"),
         "doubles": sum(1 for s in selections if s["type"] == "双选"),
@@ -114,7 +161,8 @@ def optimize(matches: list[dict], strategy: str = "balanced", budget: float | No
         # 模型估计的 9 场全中概率（假设各场独立）；是估计值，不是保证
         "hit_probability": round(hit, 6),
         "all_singles_hit_probability": round(singles_hit, 6),
-        "params": {"cost_aversion": lam, "cold_alpha": alpha, "max_doubles": max_d, "max_triples": max_t},
+        "params": {"cost_aversion": lam, "cold_alpha": alpha, "max_doubles": max_d, "max_triples": max_t,
+                   "max_tickets": max_tk},
         "note": "多选会提高组合覆盖率，但成本同比例增加，并不代表一定提高最终收益。",
     }
 
@@ -151,6 +199,10 @@ def build_plan(selection: dict, predictions: dict, risk: dict, odds: dict | None
 
 
 def describe(plan: dict) -> str:
+    """方案的文字描述；多票方案逐票列出（票与票之间用 ｜ 分隔）。"""
+    tickets = plan.get("tickets") or []
+    if len(tickets) > 1:
+        return " ｜ ".join(f"票{t['no']}（{t['bet_count']}注）{t['picks']}" for t in tickets)
     return " / ".join(f"{s['seq']}:{s['picks_zh']}" for s in plan.get("selections", []))
 
 

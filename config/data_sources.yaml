@@ -49,6 +49,14 @@ sources:
       ratings: /{date}
     status: unreachable      # 2026-11-24 实测连接失败；不可用时自动降级为自算 Elo
     api_key: false
+  c500:
+    name: 500 彩票网（任九/胜负彩选号页的多家机构平均欧赔）
+    kind: public
+    base: https://trade.500.com
+    endpoints:
+      ren9: /rcjc/?expect={period}
+    status: verified         # 2026-11-27 实测可用（14 场全部带平均欧赔；只支持当前在售期）
+    api_key: false
   understat:
     name: Understat
     kind: public
@@ -123,4 +131,5 @@ odds_sources:
   sporttery_jc_hhad: {kind: official, label: 竞彩官方让球胜平负}
   sporttery_zc_ref: {kind: official, label: 体彩网赛单页参考赔率}
   espn_draftkings: {kind: commercial, label: DraftKings（经 ESPN）}
+  c500_avg: {kind: commercial, label: 多家机构平均欧赔（500 彩票网）}
   football_data_avg: {kind: commercial, label: 多家机构平均（football-data.co.uk，仅历史）}

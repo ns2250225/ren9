@@ -1,5 +1,8 @@
 """预测引擎：Elo + Poisson + Dixon-Coles + 市场去水概率 → 集成概率。
 
+回测表明赛前市场概率是最准的单一输入，自建模型只在没有赔率的比赛里起决定作用；
+集成参数（见 models/ensemble.py）由回测拟合，有赔率 / 无赔率的比赛各用一套。
+
 所有概率均由这里的 Python 计算得出；任何模型缺少输入时直接不参与集成（权重重新归一化），
 全部模型都不可用时该场不给出概率。
 """
@@ -17,16 +20,21 @@ from ren9.common import OUTCOMES, data_sources, model_weights, now_iso, rnd, set
 _fit_memo: dict[tuple, dict] = {}
 
 
-def ensemble_config() -> tuple[dict, float, str]:
-    """返回 (权重, 校准温度, 来源说明)。存在回测学习结果且启用时优先使用。"""
+def ensemble_config() -> dict:
+    """返回集成配置 {method, weights, temperature, bias, no_market, source}。存在回测学习结果且启用时优先使用。"""
     mw = model_weights()
     ens = mw.get("ensemble", {})
     learned = ens.get("learned")
     if ens.get("use_learned", True) and learned and learned.get("weights"):
-        return dict(learned["weights"]), float(learned.get("temperature", 1.0)), (
-            f"回测学习（{learned.get('source', 'backtest')}，样本 {learned.get('samples')}，{learned.get('fitted_at')}）"
-        )
-    return dict(ens.get("initial", {})), float(mw.get("calibration", {}).get("temperature", 1.0)), "初始配置（尚未回测校准）"
+        return {
+            "method": learned.get("method", "linear"), "weights": dict(learned["weights"]),
+            "temperature": float(learned.get("temperature", 1.0)), "bias": learned.get("bias"),
+            "no_market": learned.get("no_market"),
+            "source": f"回测学习（{learned.get('source', 'backtest')}，样本 {learned.get('samples')}，{learned.get('fitted_at')}）",
+        }
+    return {"method": "linear", "weights": dict(ens.get("initial", {})),
+            "temperature": float(mw.get("calibration", {}).get("temperature", 1.0)), "bias": None,
+            "no_market": None, "source": "初始配置（尚未回测校准）"}
 
 
 def fitted_models(ds: dict, ref: date) -> dict:
@@ -59,8 +67,9 @@ def _quality(sched_official: bool, td: dict | None, od: dict | None, elo_src: st
     parts["resolution"] = (td or {}).get("resolution", {}).get("confidence", 0.0) if td else 0.0
     h = (td or {}).get("history")
     parts["history"] = min(1.0, min(h["home_matches"], h["away_matches"]) / 12.0) if h else 0.0
-    n_src = len((od or {}).get("sources") or [])
-    parts["market"] = 1.0 if n_src >= 2 else 0.8 if n_src == 1 else 0.0
+    srcs = ((od or {}).get("market") or {}).get("sources_used") or (od or {}).get("sources") or []
+    # 多家机构的平均欧赔本身就是多来源共识，与"两个以上来源"同等对待
+    parts["market"] = 1.0 if len(srcs) >= 2 or "c500_avg" in srcs else 0.8 if srcs else 0.0
     parts["elo"] = 1.0 if elo_src == "ClubElo" else 0.6 if elo_src else 0.0
     teams = (td or {}).get("teams") or {}
     parts["standings"] = sum(0.5 for s in ("home", "away") if (teams.get(s) or {}).get("standing"))
@@ -69,8 +78,10 @@ def _quality(sched_official: bool, td: dict | None, od: dict | None, elo_src: st
     parts["kickoff"] = 1.0 if ko.get("cross_validated") else 0.7 if ko.get("value") else 0.0
     parts["lineup"] = sum(0.5 for s in ("home", "away")
                           if ((teams.get(s) or {}).get("lineup") or {}).get("official_lineup_published"))
-    w = {"schedule": 0.10, "resolution": 0.15, "history": 0.25, "market": 0.20, "elo": 0.10,
-         "standings": 0.05, "form": 0.05, "kickoff": 0.05, "lineup": 0.05}
+    # 回测里赛前市场概率是最准的单一输入（学习到的集成几乎只用它），所以有赔率的比赛数据质量就有保证；
+    # 只有赔率、没有球队数据的比赛（次级联赛常见）不应被当作"数据严重缺失"而排除。
+    w = {"schedule": 0.10, "resolution": 0.10, "history": 0.15, "market": 0.45, "elo": 0.05,
+         "standings": 0.05, "form": 0.05, "kickoff": 0.025, "lineup": 0.025}
     score = sum(w[k] * parts[k] for k in w)
     return round(score, 4), {k: round(v, 3) for k, v in parts.items()}
 
@@ -153,8 +164,8 @@ def predict_match(m: dict, td: dict | None, od: dict | None, sched_official: boo
             unavailable["market"] = "没有可用赔率"
 
     quality, qparts = _quality(sched_official, td, od, elo_src)
-    weights, temperature, wsrc = ensemble_config()
-    # 小样本降权：基于历史赛果的模型（Poisson / Dixon-Coles / 自算 Elo）按样本量线性折减权重，
+    ens_cfg = ensemble_config()
+    # 小样本降权：基于历史赛果的模型（Poisson / Dixon-Coles / 自算 Elo）按样本量线性折减，
     # 样本达到 full_weight_matches 场才用满权重，避免几场比赛拟合出的结果主导集成。
     full = cfg["data"].get("full_weight_matches", 20)
     reliability = {}
@@ -163,8 +174,7 @@ def predict_match(m: dict, td: dict | None, od: dict | None, sched_official: boo
         for name in ("poisson", "dixon_coles") + (("elo",) if elo_src == "self" else ()):
             if name in probs:
                 reliability[name] = rel
-                weights[name] = weights.get(name, 0.0) * rel
-    combined = ensemble.combine(probs, weights, temperature)
+    combined = ensemble.pool(probs, ens_cfg, reliability)
     out = {
         "match_id": m["match_id"], "seq": m.get("seq"), "home_team": m["home_team"], "away_team": m["away_team"],
         "competition": m.get("competition"),
@@ -175,8 +185,9 @@ def predict_match(m: dict, td: dict | None, od: dict | None, sched_official: boo
         "models_unavailable": unavailable,
         "model_probabilities": {k: round_probs(v) for k, v in probs.items()},
         "model_details": details,
-        "ensemble_weights_source": wsrc,
-        "calibration_temperature": temperature,
+        "ensemble_weights_source": ens_cfg["source"],
+        "ensemble_method": ens_cfg["method"],
+        "calibration_temperature": ens_cfg["temperature"] if ens_cfg["method"] == "linear" else None,
         "sample_reliability": reliability,
     }
     if not combined:

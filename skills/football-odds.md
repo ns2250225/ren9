@@ -26,8 +26,13 @@ python ../scripts/fetch_odds.py --odds 1.85,3.40,4.20      # 只计算，不联�
 ```text
 隐含概率  P(胜) = 1/O(胜)，P(平) = 1/O(平)，P(负) = 1/O(负)
 水位      overround = P(胜)+P(平)+P(负) − 1
-去水概率  P'(x) = P(x) / (P(胜)+P(平)+P(负))
+去水概率  商业机构：幂次法，求 k 使 Σ P(x)^k = 1，P'(x) = P(x)^k
+          竞彩官方：比例法，P'(x) = P(x) / (P(胜)+P(平)+P(负))
 ```
+
+比例法会高估冷门、低估热门；3.2 万场历史赔率上幂次法对每家商业机构的 Log Loss 都更低。
+竞彩官方赔率水位约 14% 且水分分布不同（幂次法会把热门高估约 5 个百分点），所以单独用比例法。
+方法在 `config/model_weights.yaml` 的 `market.devig` / `market.devig_official` 配置。
 
 ## 输出（每个来源一条）
 
@@ -37,7 +42,8 @@ python ../scripts/fetch_odds.py --odds 1.85,3.40,4.20      # 只计算，不联�
   "odds": {"home": 1.85, "draw": 3.40, "away": 4.20},
   "implied_probability": {"home": 0.5405, "draw": 0.2941, "away": 0.2381},
   "overround": 0.0728,
-  "fair_probability": {"home": 0.5039, "draw": 0.2742, "away": 0.2219}
+  "fair_probability": {"home": 0.5167, "draw": 0.2689, "away": 0.2144},
+  "devig_method": "power"
 }
 ```
 
@@ -49,7 +55,7 @@ python ../scripts/fetch_odds.py --odds 1.85,3.40,4.20      # 只计算，不联�
 | `jc_handicap` | 中国竞彩让球胜平负（让球数 `line` + 三项赔率与去水概率） |
 | `asian_handicap` | 亚洲让球（商业机构，盘口与两项赔率） |
 | `totals` | 大小球（盘口与两项赔率） |
-| `market` | 市场共识：各来源去水概率的平均，注明用了几个官方 / 商业来源 |
+| `market` | 市场共识：各来源去水概率的加权平均（水位越低权重越高，见 `source_weights`），注明用了几个官方 / 商业来源 |
 | `movement` | 赔率波动：开盘 → 当前，或首次记录 → 当前的去水概率最大变动 |
 
 ## 数据源
@@ -60,6 +66,7 @@ python ../scripts/fetch_odds.py --odds 1.85,3.40,4.20      # 只计算，不联�
 | `sporttery_jc_hhad` | official | 竞彩官方让球胜平负 |
 | `sporttery_zc_ref` | official | 体彩网传统足彩赛单页的参考赔率（没有竞彩 HAD 时使用） |
 | `espn_<机构>` | commercial | ESPN 提供的商业机构胜平负 / 让球 / 大小球（含开盘价） |
+| `c500_avg` | commercial | 500 彩票网任九选号页的多家机构平均欧赔（当期 14 场全覆盖，按期号 + 场次对应并核对队名） |
 
 每次抓取的赔率变化都记入本地 `odds_snapshots` 表，用于波动分析。
 

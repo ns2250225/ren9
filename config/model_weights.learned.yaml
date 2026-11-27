@@ -1,22 +1,55 @@
 ensemble:
+  method: log_linear
   weights:
-    elo: 0.3
-    poisson: 0.05
-    dixon_coles: 0.05
-    market: 0.6
-  temperature: 0.8391
-  log_loss: 0.994
-  samples: 1750
-  constraints:
-    max_market_weight: 0.6
-    min_model_weight: 0.05
-  fitted_at: '2026-11-24T15:33:33+08:00'
-  source: backtest:E0,E1,D1,I1,SP1,F1
-elo_draw_nu: 0.74
+    elo: 0.0
+    poisson: 0.0
+    dixon_coles: 0.0
+    market: 1.093
+  bias:
+    win: -0.0022
+    draw: 0.0839
+    loss: 0.0
+  log_loss: 0.9891
+  samples: 14680
+  no_market:
+    weights:
+      elo: 0.7926
+      poisson: 0.2509
+      dixon_coles: 0.1494
+    bias:
+      win: -0.0172
+      draw: 0.1207
+      loss: 0.0
+    log_loss: 1.0055
+  fitted_at: '2026-11-27T14:12:14+08:00'
+  source: backtest:E0,E1,E2,D1,D2,I1,I2,SP1,SP2,F1,F2,N1,P1,B1,T1,SC0
+elo_draw_nu: 0.76
 selector:
   weights:
-    probability: 0.6529
+    probability: 0.5388
     agreement: 0.0
     data_quality: 0.15
-    risk: 0.1971
-  samples: 1750
+    risk: 0.3112
+  samples: 14680
+form_adjust:
+  form_coef: 0.0
+  motivation_coef: 0.0
+  fit_log_loss_before: 0.98914
+  fit_log_loss_after: 0.98912
+  samples: 14680
+  holdout_before:
+    n: 9787
+    accuracy: 0.5166
+    brier: 0.5906
+    log_loss: 0.9899
+    rps: 0.2017
+  holdout_after:
+    n: 9787
+    accuracy: 0.5166
+    brier: 0.5906
+    log_loss: 0.9899
+    rps: 0.2017
+  improves_holdout: false
+  note: 留出集 Log Loss 未改善，系数置 0（状态/战意只进入风险因子，不修正概率）
+  fitted_at: '2026-11-27T14:12:14+08:00'
+  source: backtest:E0,E1,E2,D1,D2,I1,I2,SP1,SP2,F1,F2,N1,P1,B1,T1,SC0

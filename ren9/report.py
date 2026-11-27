@@ -61,10 +61,11 @@ def history_eval_md() -> str:
         parts.append(f"**时间切分回测**（{', '.join(bt['leagues'])}；{bt['test_range'][0]} ~ {bt['test_range'][1]}；"
                      f"留出集 {bt['holdout']['ensemble']['n']} 场，训练数据始终早于被预测比赛）：")
         rows = []
-        for k in ("elo", "poisson", "dixon_coles", "market", "ensemble_initial", "ensemble"):
+        for k in ("elo", "poisson", "dixon_coles", "market", "ensemble_initial", "ensemble_no_market", "ensemble"):
             v = bt["holdout"].get(k)
             if v:
-                name = {"ensemble": "集成（学习权重+校准）", "ensemble_initial": "集成（初始权重）"}.get(k, MODEL_ZH.get(k, k))
+                name = {"ensemble": "集成（回测学习）", "ensemble_initial": "集成（初始权重）",
+                        "ensemble_no_market": "集成（无赔率时）"}.get(k, MODEL_ZH.get(k, k))
                 rows.append([name, v["n"], pct(v["accuracy"], 1), v["brier"], v["log_loss"], v["rps"]])
         parts.append(table(["模型", "场数", "准确率", "Brier", "Log Loss", "RPS"], rows, "lrrrrr"))
         if bt.get("top_pick_buckets"):
@@ -76,7 +77,10 @@ def history_eval_md() -> str:
             s = bt["ren9_simulation"]
             parts.append(f"任九组合历史模拟（留出集按时间每 14 场组成一组，共 {s['coupons']} 组）："
                          + "；".join(f"{STRATEGY_ZH.get(k, k)} 9 场全中 {v['hits']}/{s['coupons']}"
-                                    f"（平均 {v['avg_bets']:.1f} 注）" for k, v in s["strategies"].items())
+                                    f"（平均 {v['avg_bets']:.1f} 注"
+                                    + (f"、{v['avg_tickets']:.1f} 张票；同样预算只买一张复式为 {v['compound_hits']}/{s['coupons']}"
+                                       if v.get("compound_hits") is not None else "") + "）"
+                                    for k, v in s["strategies"].items())
                          + "。模拟组合不是官方赛单，没有真实奖金，因此不计算 ROI。")
     else:
         parts.append("**时间切分回测**：尚未运行（`python scripts/backtest.py`）。当前集成权重为初始配置，未经回测校准。")
@@ -190,15 +194,38 @@ def _match_notes(st: dict, plan: dict | None, selection: dict | None) -> str:
     return "\n\n".join(out)
 
 
+def _tickets_md(plan: dict) -> str:
+    """购买清单：每张复式票的 9 场选择、注数、金额与全中概率。"""
+    tickets = plan.get("tickets") or []
+    if not tickets:
+        return ""
+    rows = [[f"票 {t['no']}", t["picks"], t["bet_count"], f"{t['cost']:.0f}", f"{t['hit_probability'] * 100:.3f}%"]
+            for t in tickets]
+    rows.append(["合计", f"{len(tickets)} 张票", plan["bet_count"], f"{plan['total_cost']:.0f}",
+                 f"{plan['hit_probability'] * 100:.3f}%"])
+    out = [f"**购买清单（{len(tickets)} 张复式票，共 {plan['bet_count']} 注 {plan['total_cost']:.0f} 元）**", "",
+           table(["票号", "9 场选择（场次:结果）", "注数", "金额(元)", "全中概率"], rows, "llrrr")]
+    alt = plan.get("compound_alternative")
+    if len(tickets) > 1:
+        out.append("> 每张票单独购买（都是普通复式票）。各票覆盖的组合互不重叠，任意一张 9 场全中即中奖，"
+                   "所以总全中概率是各票之和。上面\"推荐\"一列是各票在该场选过的全部结果，购买时以本清单为准。")
+    if alt:
+        gain = plan["hit_probability"] / alt["hit_probability"] - 1 if alt["hit_probability"] else 0
+        out.append(f"> 对照：只买一张复式（{alt['picks']}）为 {alt['bet_count']} 注 {alt['total_cost']:.0f} 元，"
+                   f"全中概率 {alt['hit_probability'] * 100:.3f}%；多票方案 {plan['bet_count']} 注，"
+                   f"全中概率相对提高 {gain:.0%}。")
+    return "\n\n".join(out)
+
+
 def _plan_stats(plan: dict) -> str:
     if not plan or plan.get("status") != "ok":
         return f"未生成正式方案：{(plan or {}).get('message', '')}"
+    multi = len(plan.get("tickets") or []) > 1
     return "\n".join([
         "```text",
         f"选择场次：{len(plan['selections'])}场",
-        f"单选：{plan['singles']}场",
-        f"双选：{plan['doubles']}场",
-        f"全选：{plan['triples']}场",
+        f"购买方式：{len(plan['tickets'])} 张复式票（多票组合）" if multi else "购买方式：1 张复式票",
+        *([] if multi else [f"单选：{plan['singles']}场", f"双选：{plan['doubles']}场", f"全选：{plan['triples']}场"]),
         "",
         f"组合数量：{plan['bet_count']}注",
         f"每注金额：{plan['unit_price']}元",
@@ -260,6 +287,7 @@ def build_daily(st: dict, strategy: str) -> tuple[str, dict]:
             ["场次", "对阵", "推荐", "类型", "覆盖概率", "风险"],
             [[s["seq"], s["match"], s["picks_zh"], s["type"], pct(s["coverage"], 1), RISK_ZH.get(s["risk_level"], "—")]
              for s in plan["selections"]], "rllcrc")
+        selected_table += "\n\n" + _tickets_md(plan)
         excluded_table = table(["场次", "对阵", "排除理由"],
                                [[e["seq"], e["match"], e["reason"]] for e in sel["excluded"]], "rll")
     else:
@@ -271,15 +299,14 @@ def build_daily(st: dict, strategy: str) -> tuple[str, dict]:
     for name, pl in plans.items():
         if name == strategy or pl.get("status") != "ok":
             continue
-        desc = "、".join(f"{s['seq']}:{s['picks_zh']}" for s in pl["selections"])
         others.append(f"### 备选方案：{STRATEGY_ZH.get(name, name)}策略\n\n"
-                      f"- 9 场配置：{desc}\n"
                       f"- 排除场次：{'、'.join(str(x) for x in pl['excluded_matches'])}\n"
-                      f"- 单选 {pl['singles']} / 双选 {pl['doubles']} / 全选 {pl['triples']}，"
-                      f"{pl['bet_count']} 注，{pl['total_cost']} 元；模型估计全中概率 {pl['hit_probability'] * 100:.3f}%")
+                      f"- {pl['bet_count']} 注，{pl['total_cost']} 元；模型估计全中概率 {pl['hit_probability'] * 100:.3f}%\n\n"
+                      + _tickets_md(pl))
     weights_src = next((p.get("ensemble_weights_source") for p in preds.values()), "—")
     used = next((p.get("weights_used") for p in preds.values() if p.get("weights_used")), {})
-    model_info = (f"- 集成方式：Elo / Poisson / Dixon-Coles / 市场去水概率加权融合，缺失的模型自动剔除并重新归一化权重。\n"
+    model_info = (f"- 集成方式：Elo / Poisson / Dixon-Coles / 市场去水概率融合（回测学习后为对数线性池化，"
+                  f"有赔率 / 无赔率的比赛各用一套参数）；缺失的模型自动剔除。\n"
                   f"- 权重来源：{weights_src}。\n"
                   f"- 14 选 9 评分权重：{(sel or {}).get('score_weights', '—')}（{(sel or {}).get('score_weights_source', '—')}）。")
     n_pred = sum(1 for p in preds.values() if p.get("status") == "ok")
@@ -562,7 +589,9 @@ def build_review(review: dict, agg: dict | None = None) -> str:
                if pl.get("roi") is not None else pl.get("roi_note", "ROI 不可用"))
         out.append(f"- 9 场命中 {pl['hits']}/{pl['total']}；单选命中 {pl['single_hits']}/{pl['single_total']}；"
                    f"双选/全选覆盖 {pl['multi_covered']}/{pl['multi_total']}；"
-                   f"9 场全中：{'是' if pl['all_nine_hit'] else '否'}\n"
+                   f"9 场全中：{'是' if pl['all_nine_hit'] else '否'}"
+                   + (f"（共 {len(pl['tickets'])} 张票，命中最多的一张 {pl['best_ticket_hits']}/9；上表为各票选择的合并）"
+                      if len(pl.get("tickets") or []) > 1 else "") + "\n"
                    f"- 成本 {pl['cost']} 元（{pl['bet_count']} 注）；{roi}")
     if not review.get("plans"):
         out.append("（该期没有保存的方案）")

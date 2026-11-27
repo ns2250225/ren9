@@ -75,6 +75,12 @@ def test_pipeline_end_to_end_and_report(fake_http, zc_text, jc_text, odds_only_o
     for m in st["schedule"]["matches"]:
         assert m["home_team"] in md and m["away_team"] in md
     assert "26169" in md and "不保证命中或盈利" in md and "组合数量" in md
+    # 多票方案：报告里有逐票的购买清单，注数与金额和方案一致
+    assert "购买清单" in md and "票 1" in md
+    for pl in st["plans"]["strategies"].values():
+        assert pl["bet_count"] == sum(t["bet_count"] for t in pl["tickets"])
+        if pl["mode"] == "tickets":
+            assert f"{len(pl['tickets'])} 张复式票，共 {pl['bet_count']} 注" in md
 
     js = json.loads(Path(rep["json_path"]).read_text(encoding="utf-8"))
     assert len(js["matches"]) == 14
@@ -212,6 +218,32 @@ def test_review_pending_and_missing(fake_http, draw_text):
     fake_http({"getFootBallDrawInfoByDrawNumV1": draw_text})
     assert review.review_ren9("26168")["status"] == "no_prediction"
     assert review.optimize_weights("ren9")["status"] == "insufficient"
+
+
+def test_review_multi_ticket_plan_wins_if_any_ticket_hits_all_nine():
+    def sel(picks_by_seq):
+        return [{"seq": i, "match": "", "picks": pk, "picks_zh": "", "type": "单选"} for i, pk in picks_by_seq.items()]
+
+    main = {i: ["win"] for i in range(1, 10)}
+    side = {**main, 9: ["draw"]}
+    plan = {"strategy": "balanced", "mode": "tickets", "bet_count": 2, "total_cost": 4,
+            "selections": sel({**main, 9: ["win", "draw"]}),
+            "tickets": [{"no": 1, "bet_count": 1, "picks": "", "selections": sel(main)},
+                        {"no": 2, "bet_count": 1, "picks": "", "selections": sel(side)}]}
+    actual = {i: "win" for i in range(1, 9)}
+    hit = review._evaluate_plan(plan, {**actual, 9: "draw"}, set(), {"amount": 1000.0})      # 副票全中
+    assert hit["all_nine_hit"] and hit["winning_bets"] == 1 and hit["best_ticket_hits"] == 9
+    assert [t["won"] for t in hit["tickets"]] == [False, True]
+    assert hit["roi"] == pytest.approx((1000 - 4) / 4)
+    miss = review._evaluate_plan(plan, {**actual, 9: "loss"}, set(), {"amount": 1000.0})
+    assert not miss["all_nine_hit"] and miss["winning_bets"] == 0 and miss["best_ticket_hits"] == 8
+    # 各票的并集覆盖了赛果，但没有任何一张票 9 场全中：不算中奖
+    split = {"strategy": "balanced", "mode": "tickets", "bet_count": 2, "total_cost": 4,
+             "selections": sel({**main, 8: ["win", "draw"], 9: ["win", "draw"]}),
+             "tickets": [{"no": 1, "bet_count": 1, "picks": "", "selections": sel({**main, 8: ["draw"]})},
+                         {"no": 2, "bet_count": 1, "picks": "", "selections": sel({**main, 9: ["draw"]})}]}
+    both = review._evaluate_plan(split, {**actual, 8: "draw", 9: "draw"}, set(), None)
+    assert both["hits"] == 9 and not both["all_nine_hit"]
 
 
 def test_tax_applied_above_threshold():

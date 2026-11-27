@@ -9,15 +9,30 @@ ensemble:
     poisson: 0.20
     dixon_coles: 0.35
     market: 0.30
-  # 学习权重时的约束：市场概率只是输入之一，不能单独决定最终概率；
-  # 每个模型保留最低权重，保证没有赔率的比赛仍可由其余模型给出预测。
+  # 回测（scripts/backtest.py）学习的是对数线性池化：指数与偏置不设上限约束，有赔率 / 无赔率的比赛
+  # 各拟合一套参数（无赔率时只用 Elo / Poisson / Dixon-Coles）。回测显示赛前市场概率是最准的单一输入，
+  # 之前把市场权重限制在 0.60 以内反而让集成比纯市场概率更差，所以不再限制。
+  # 下面两项只用于 review_results.py --optimize-weights（用少量实盘记录拟合线性权重）时的约束。
   max_market_weight: 0.60
   min_model_weight: 0.05
   use_learned: true
   learned: null            # {weights: {...}, temperature: 1.0, fitted_at: ..., samples: N, source: ...}
 
+market:
+  # 去水方法：power = 幂次法（求 k 使 Σ(1/赔率)^k = 1），proportional = 按比例缩放。
+  # 商业机构赔率按比例缩放会高估冷门、低估热门；3.2 万场历史赔率上，幂次法对每一家机构的
+  # Log Loss 都更低。
+  devig: power
+  # 竞彩官方赔率（水位约 14%）的水分分布不同：44 场与 DraftKings 的对比中，幂次法把热门方概率
+  # 高估约 5.6 个百分点，比例法只高估约 1.2 个百分点，所以官方赔率单独用比例法。
+  devig_official: proportional
+  # 多个赔率来源合成市场共识时的权重：overround = 水位越低权重越高（权重 ∝ 1 / (水位 + margin_floor)），
+  # equal = 每个来源一票。历史数据上低水位机构的概率更准；竞彩官方赔率偏向热门方，按水位自动降权。
+  source_weighting: overround
+  margin_floor: 0.02
+
 calibration:
-  temperature: 1.0         # 概率校准温度（>1 压平，<1 锐化）；learned 存在时被覆盖
+  temperature: 1.0        # 概率校准温度（>1 压平，<1 锐化）；learned 存在时被覆盖
 
 elo:
   home_advantage: 65       # 主场优势（Elo 分）
